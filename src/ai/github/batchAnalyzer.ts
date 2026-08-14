@@ -9,8 +9,9 @@
  */
 import { jsonrepair } from 'jsonrepair';
 import {
-  getModelChain, isRateLimitError, resolveProxyUrl,
+  getModelChain, isRateLimitError,
 } from '../config';
+import { aiRequest } from '../engine';
 import type { AISchemaResponse } from '../engine';
 import { TOKEN_CONFIG, splitBatch, type Batch } from './tokenBudget';
 
@@ -90,29 +91,24 @@ async function callAI(
 ): Promise<{ ok: boolean; status: number; body: string; modelUsed: string }> {
   const chain = getModelChain();
   const entry = chain[modelIndex] ?? chain[chain.length - 1]!;
-  const { apiKey, baseUrl, model } = entry;
 
-  const res = await fetch(`${resolveProxyUrl(baseUrl)}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      stream: false,
-      temperature: 0.1,
-      max_tokens: TOKEN_CONFIG.maxOutputTokens,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: BATCH_SYSTEM_PROMPT },
-        { role: 'user',   content: prompt },
-      ],
-    }),
+  const { ok, status, data } = await aiRequest({
+    messages: [
+      { role: 'system', content: BATCH_SYSTEM_PROMPT },
+      { role: 'user',   content: prompt },
+    ],
+    temperature:     0.1,
+    max_tokens:      TOKEN_CONFIG.maxOutputTokens,
+    response_format: { type: 'json_object' },
+    modelIndex,
   });
 
-  const body = await res.text();
-  return { ok: res.ok, status: res.status, body, modelUsed: model };
+  return {
+    ok,
+    status,
+    body:      JSON.stringify(data),
+    modelUsed: entry.model,
+  };
 }
 
 // ─── Parse AI response ────────────────────────────────────────────────────────

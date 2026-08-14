@@ -105,8 +105,10 @@ export function resolveProxyUrl(baseUrl: string): string {
     window.location.hostname === 'localhost' ||
     window.location.hostname === '127.0.0.1';
 
-  if (!isDev) return baseUrl;
+  // In production → route through Vercel serverless function (keeps key server-side)
+  if (!isDev) return '/api/ai-proxy';
 
+  // In dev → use Vite proxy to avoid CORS
   if (baseUrl.includes('api.groq.com'))    return '/proxy/groq/openai/v1';
   if (baseUrl.includes('api.openai.com'))  return '/proxy/openai/v1';
   if (baseUrl.includes('openrouter.ai'))   return '/proxy/openrouter/api/v1';
