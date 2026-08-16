@@ -109,6 +109,8 @@ type SchemaStoreActions = {
   canRedo: () => boolean;
 
   revalidate: () => void;
+  /** Wipe persisted schema state on sign-out so next user starts fresh */
+  resetForSignOut: () => void;
 };
 
 export type SchemaStore = SchemaStoreState & SchemaStoreActions;
@@ -343,6 +345,12 @@ export const useSchemaStore = create<SchemaStore>()(
 
   revalidate: () => {
     set((state) => ({ validation: validateSchema(state.schema) }));
+  },
+
+  resetForSignOut: () => {
+    localStorage.removeItem('ai-schema-builder-state');
+    const initial = createInitialState();
+    set(initial);
   },
 }),
     {

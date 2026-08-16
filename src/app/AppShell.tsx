@@ -18,9 +18,11 @@ import { SchemaGuideModal }       from '../components/SchemaGuideModal';
 import { GitHubRepoModal }        from '../components/GitHubRepoModal';
 import { ErrorBoundary }          from '../components/ErrorBoundary';
 import { AICommandBar }           from '../components/AICommandBar';
+import { SchemaHistoryPanel }     from '../components/SchemaHistoryPanel';
 import { useSchemaStore }         from '../stores/schemaStore';
 import { useAuthStore }           from '../stores/authStore';
 import { useMultiSchemaStore }    from '../stores/multiSchemaStore';
+import { useSchemaHistoryStore }  from '../stores/schemaHistoryStore';
 import { encodeSchemaToURL, decodeSchemaFromURL, clearSchemaFromURL } from '../utils/shareSchema';
 import { getStoredTheme, applyTheme, toggleTheme } from '../utils/theme';
 
@@ -28,7 +30,7 @@ type RightTab =
   | 'inspector' | 'lint'
   | 'enums' | 'indexes'
   | 'export' | 'migration' | 'import'
-  | 'seed' | 'query';
+  | 'seed' | 'query' | 'history';
 
 const TAB_GROUPS: { label: string; tabs: { id: RightTab; label: string }[] }[] = [
   {
@@ -42,9 +44,10 @@ const TAB_GROUPS: { label: string; tabs: { id: RightTab; label: string }[] }[] =
   {
     label: 'AI',
     tabs: [
-      { id: 'lint',  label: '🔎 Review' },
-      { id: 'seed',  label: '🌱 Seed' },
-      { id: 'query', label: '🗃 Query' },
+      { id: 'lint',    label: '🔎 Review' },
+      { id: 'seed',    label: '🌱 Seed' },
+      { id: 'query',   label: '🗃 Query' },
+      { id: 'history', label: '🕐 History' },
     ],
   },
   {
@@ -78,12 +81,39 @@ export function AppShell() {
   const loadSchema             = useSchemaStore((s) => s.loadSchema);
 
   const { user, signOut }           = useAuthStore();
-  const { tabs, activeTabId, saveTabToCloud } = useMultiSchemaStore();
+  const { tabs, activeTabId, saveTabToCloud, updateTabSchema } = useMultiSchemaStore();
   const activeTab = tabs.find((t) => t.id === activeTabId);
+
+  // Track previous activeTabId to detect tab switches (not just schema edits)
+  const prevActiveTabIdRef = useRef<string>('');
 
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [saveStatus, setSaveStatus]     = useState<'idle'|'saving'|'saved'|'error'>('idle');
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Tab switch: load the new tab's schema into schemaStore ──────────────
+  useEffect(() => {
+    if (!activeTabId) return;
+    // Only trigger when the active tab actually changes, not on every schema edit
+    if (prevActiveTabIdRef.current === activeTabId) return;
+    prevActiveTabIdRef.current = activeTabId;
+
+    const tab = tabs.find((t) => t.id === activeTabId);
+    if (!tab) return;
+
+    // Load this tab's schema into the working schemaStore
+    loadSchema(tab.schema);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTabId]);
+
+  // ── Schema edit: keep multiSchemaStore tab in sync ──────────────────────
+  useEffect(() => {
+    if (!activeTabId) return;
+    // Don't sync back during a tab switch (prev ref won't match yet)
+    if (prevActiveTabIdRef.current !== activeTabId) return;
+    updateTabSchema(activeTabId, schema);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schema]);
 
   // Auto-save to cloud 2 seconds after any schema change
   useEffect(() => {
@@ -183,6 +213,7 @@ export function AppShell() {
 
   const errorCount = validation.errors.length;
   const hasSchema  = schema.entities.length > 0;
+  const historyCount = useSchemaHistoryStore((s) => s.entries.length);
 
   return (
     <div className="app-shell" data-theme={theme}>
@@ -335,6 +366,9 @@ export function AppShell() {
                     {tab.id === 'inspector' && errorCount > 0 && (
                       <span className="tab-error-badge">{errorCount}</span>
                     )}
+                    {tab.id === 'history' && historyCount > 0 && (
+                      <span className="tab-history-badge">{historyCount}</span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -358,6 +392,7 @@ export function AppShell() {
             {rightTab === 'export'    && <ErrorBoundary><ExportPanel /></ErrorBoundary>}
             {rightTab === 'migration' && <ErrorBoundary><MigrationPanel /></ErrorBoundary>}
             {rightTab === 'import'    && <ErrorBoundary><ImportPanel /></ErrorBoundary>}
+            {rightTab === 'history'   && <ErrorBoundary><SchemaHistoryPanel /></ErrorBoundary>}
           </div>
         </aside>
       </main>

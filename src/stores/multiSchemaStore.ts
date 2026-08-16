@@ -2,9 +2,12 @@
  * Multi-Schema Store — manages multiple schema tabs.
  * When user is authenticated, schemas are synced to Supabase.
  * When not authenticated, falls back to localStorage.
+ *
+ * Data isolation: the persisted key is namespaced by userId so that
+ * different users on the same browser never share tab data.
  */
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import type { SchemaModel } from '../types';
 import { createEmptySchema } from '../core/schema/factory';
 import { generateId } from '../utils/id';
@@ -28,6 +31,8 @@ type MultiSchemaState = {
   tabs: SchemaTab[];
   activeTabId: string;
   cloudLoaded: boolean;
+  /** The userId whose data is currently loaded — used to detect user switches */
+  loadedUserId: string | null;
 };
 
 type MultiSchemaActions = {
@@ -39,10 +44,12 @@ type MultiSchemaActions = {
   duplicateTab: (id: string) => void;
 
   // Cloud sync
-  loadFromCloud: () => Promise<void>;
+  loadFromCloud: (userId: string) => Promise<void>;
   saveTabToCloud: (id: string) => Promise<void>;
   deleteTabFromCloud: (id: string) => Promise<void>;
   clearCloudData: () => void;
+  /** Call on logout to wipe all local state and localStorage */
+  resetForSignOut: () => void;
 };
 
 export type MultiSchemaStore = MultiSchemaState & MultiSchemaActions;
@@ -58,6 +65,7 @@ export const useMultiSchemaStore = create<MultiSchemaStore>()(
       tabs:        [makeInitialTab()],
       activeTabId: '',
       cloudLoaded: false,
+      loadedUserId: null,
 
       // ── Local tab ops ──────────────────────────────────────────
 
@@ -114,13 +122,19 @@ export const useMultiSchemaStore = create<MultiSchemaStore>()(
 
       // ── Cloud sync ─────────────────────────────────────────────
 
-      loadFromCloud: async () => {
+      loadFromCloud: async (userId: string) => {
+        // If data from a different user is loaded, clear it first
+        if (get().loadedUserId && get().loadedUserId !== userId) {
+          const fresh = makeInitialTab();
+          set({ tabs: [fresh], activeTabId: fresh.id, cloudLoaded: false, loadedUserId: null });
+        }
+
         try {
           const remote: RemoteSchema[] = await fetchSchemas();
 
           if (remote.length === 0) {
             // User has no cloud schemas — keep local tabs as-is
-            set({ cloudLoaded: true });
+            set({ cloudLoaded: true, loadedUserId: userId });
             return;
           }
 
@@ -136,10 +150,11 @@ export const useMultiSchemaStore = create<MultiSchemaStore>()(
             tabs,
             activeTabId: tabs[0]!.id,
             cloudLoaded: true,
+            loadedUserId: userId,
           });
         } catch (err) {
           console.error('[multiSchemaStore] loadFromCloud failed:', err);
-          set({ cloudLoaded: true });
+          set({ cloudLoaded: true, loadedUserId: userId });
         }
       },
 
@@ -186,14 +201,23 @@ export const useMultiSchemaStore = create<MultiSchemaStore>()(
         const fresh = makeInitialTab();
         set({ tabs: [fresh], activeTabId: fresh.id, cloudLoaded: false });
       },
+
+      resetForSignOut: () => {
+        // Wipe localStorage key entirely so next user starts clean
+        localStorage.removeItem('ai-schema-builder-tabs');
+        const fresh = makeInitialTab();
+        set({ tabs: [fresh], activeTabId: fresh.id, cloudLoaded: false, loadedUserId: null });
+      },
     }),
     {
       name: 'ai-schema-builder-tabs',
+      storage: createJSONStorage(() => localStorage),
       // Only persist locally when not cloud-loaded
       partialize: (s) => ({
-        tabs:        s.tabs,
-        activeTabId: s.activeTabId,
-        cloudLoaded: s.cloudLoaded,
+        tabs:         s.tabs,
+        activeTabId:  s.activeTabId,
+        cloudLoaded:  s.cloudLoaded,
+        loadedUserId: s.loadedUserId,
       }),
     },
   ),

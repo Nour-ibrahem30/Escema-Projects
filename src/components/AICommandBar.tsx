@@ -3,6 +3,7 @@ import { generateSchema } from '../ai/engine';
 import { applyAISchema } from '../ai/applySchema';
 import { getEffectiveApiKey } from '../ai/config';
 import { useSchemaStore } from '../stores/schemaStore';
+import { useSchemaHistoryStore } from '../stores/schemaHistoryStore';
 
 type Status = 'idle' | 'loading' | 'streaming' | 'done' | 'error';
 
@@ -28,6 +29,7 @@ function detectLang(text: string): 'ar' | 'en' {
 export function AICommandBar({ onSchemaGenerated }: Props) {
   const schema = useSchemaStore((s) => s.schema);
   const store = useSchemaStore();
+  const addHistoryEntry = useSchemaHistoryStore((s) => s.addEntry);
 
   const [input, setInput] = useState('');
   const [status, setStatus] = useState<Status>('idle');
@@ -58,6 +60,9 @@ export function AICommandBar({ onSchemaGenerated }: Props) {
       },
       onDone: (result) => {
         applyAISchema(result, store);
+        // Save to history — read the fresh schema after applying
+        const freshSchema = useSchemaStore.getState().schema;
+        addHistoryEntry(trimmed, freshSchema);
         onSchemaGenerated?.(detectLang(input));
         setStatus('done');
         setInput('');
