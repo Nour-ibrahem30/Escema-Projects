@@ -28,11 +28,12 @@ export function AuthModal() {
   const handleGitHub = async () => { setError(''); try { await signInGitHub(); } catch (err) { setError(err instanceof Error ? err.message : 'GitHub sign-in failed'); } };
   const reset = () => { setError(''); setSuccess(''); };
 
-  // Detect which provider the current user signed up with
+  // Detect which providers the current user has connected
   const { user } = useAuthStore();
-  const userProvider = user?.app_metadata?.provider as string | undefined;
-  const showGoogle = !userProvider || userProvider === 'google' || userProvider === 'email';
-  const showGitHub = !userProvider || userProvider === 'github';
+  const userProviders = (user?.app_metadata?.providers as string[] | undefined)
+    ?? (user?.app_metadata?.provider ? [user.app_metadata.provider as string] : []);
+  const showGoogle = userProviders.length === 0 || userProviders.includes('google') || userProviders.includes('email');
+  const showGitHub = userProviders.length === 0 || userProviders.includes('github');
 
   return (
     <div className="auth-screen">
