@@ -128,8 +128,11 @@ export async function sendChatMessage(
   const apiKey = getEffectiveApiKey();
   if (!apiKey) throw new Error('NO_API_KEY');
 
-  const baseUrl = resolveProxyUrl(getEffectiveBaseUrl());
-  const model   = getEffectiveModel();
+  const isDev =
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1';
+
+  const model = getEffectiveModel();
 
   const messages = [
     { role: 'system', content: CHAT_SYSTEM_PROMPT },
@@ -141,21 +144,39 @@ export async function sendChatMessage(
     { role: 'user', content: userMessage },
   ];
 
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      stream: false,
-      temperature: 0.2,
-      max_tokens: 2048,
-      response_format: { type: 'json_object' },
-      messages,
-    }),
-  });
+  let response: globalThis.Response;
+
+  if (!isDev) {
+    // Production — route through Edge proxy (keeps key server-side)
+    response = await fetch('/api/ai-proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages,
+        temperature:     0.2,
+        max_tokens:      2048,
+        response_format: { type: 'json_object' },
+      }),
+    });
+  } else {
+    // Development — call AI directly through Vite proxy
+    const baseUrl = resolveProxyUrl(getEffectiveBaseUrl());
+    response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        stream:          false,
+        temperature:     0.2,
+        max_tokens:      2048,
+        response_format: { type: 'json_object' },
+        messages,
+      }),
+    });
+  }
 
   if (!response.ok) {
     const err = await response.text();
