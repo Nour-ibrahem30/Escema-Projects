@@ -243,6 +243,7 @@ export function AppShell() {
               📖 {guideLang === 'ar' ? 'شرح الـ Schema' : 'Schema Guide'}
             </button>
           )}
+          {user?.app_metadata?.provider === 'github' && (
           <button
             type="button"
             className="github-import-btn"
@@ -254,6 +255,7 @@ export function AppShell() {
             </svg>
             Import from GitHub
           </button>
+          )}
           {hasSchema && (
             <button type="button" className="btn-secondary" onClick={handleShare} title="Share schema via URL">
               🔗 Share
