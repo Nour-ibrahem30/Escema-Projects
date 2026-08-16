@@ -53,12 +53,25 @@ export function AuthModal() {
 
   return (
     <div className="auth-screen">
+
+      {/* ── Left panel: hero image ── */}
+      <div className="auth-hero">
+        <img
+          src="/escema-hero.png"
+          alt="Escema — Project Schema & Documentation Generator"
+          className="auth-hero-img"
+          draggable={false}
+        />
+      </div>
+
+      {/* ── Right panel: form ── */}
+      <div className="auth-panel">
       <div className="auth-card">
         {/* Logo */}
         <div className="auth-logo">
           <div className="auth-logo-icon">⬡</div>
           <h1 className="auth-logo-text">
-            Schema<span>AI</span>
+            Escema<span>AI</span>
           </h1>
         </div>
 
@@ -200,6 +213,7 @@ export function AuthModal() {
             </button>
           )}
         </div>
+      </div>
       </div>
     </div>
   );
