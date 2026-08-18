@@ -1,9 +1,6 @@
 import { useState } from 'react';
 import {
-  getEffectiveApiKey,
-  getEffectiveBaseUrl,
-  getEffectiveModel,
-  resolveProxyUrl,
+  isAIAvailable,
 } from '../ai/config';
 import { jsonrepair } from 'jsonrepair';
 import { useSchemaStore } from '../stores/schemaStore';
@@ -20,8 +17,7 @@ async function buildQuery(
   schema: SchemaModel,
   question: string,
 ): Promise<QueryResult> {
-  const apiKey = getEffectiveApiKey();
-  if (!apiKey) throw new Error('NO_API_KEY');
+  if (!isAIAvailable()) throw new Error('AI_NOT_CONFIGURED');
 
   const tables = schema.entities.map((e) => {
     const cols = e.fields.map((f) =>
@@ -52,16 +48,14 @@ Respond ONLY with a JSON object:
   "explanation": "Brief explanation of what this query does (in the same language as the user request)"
 }`;
 
-  const url   = `${resolveProxyUrl(getEffectiveBaseUrl())}/chat/completions`;
-  const model = getEffectiveModel();
-
-  const res = await fetch(url, {
+  const res = await fetch('/api/ai-proxy', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model, stream: false, temperature: 0.1, max_tokens: 1024,
-      response_format: { type: 'json_object' },
       messages: [{ role: 'user', content: prompt }],
+      temperature: 0.1,
+      max_tokens: 1024,
+      response_format: { type: 'json_object' },
     }),
   });
 
@@ -85,7 +79,7 @@ const EXAMPLE_QUERIES = [
 
 export function QueryBuilderPanel() {
   const schema  = useSchemaStore((s) => s.schema);
-  const hasKey  = Boolean(getEffectiveApiKey());
+  const hasKey = isAIAvailable();
   const hasData = schema.entities.length > 0;
 
   const [question, setQuestion] = useState('');
@@ -124,7 +118,7 @@ export function QueryBuilderPanel() {
         <h3>Query Builder</h3>
       </div>
 
-      {!hasKey && <p className="empty">Add VITE_AI_API_KEY to .env.local to use this feature.</p>}
+      {!hasKey && <p className="empty">AI requires configuration. In dev, use AI Settings modal.</p>}
       {hasKey && !hasData && <p className="empty">Generate or build a schema first.</p>}
 
       {hasKey && hasData && (

@@ -3,7 +3,7 @@
  * Unlike generateSchema (which replaces the whole schema), chat sends the
  * current schema context and asks the AI to return a PATCH of operations.
  */
-import { getEffectiveApiKey, getEffectiveBaseUrl, getEffectiveModel, resolveProxyUrl } from './config';
+import { getEffectiveBaseUrl, getEffectiveModel, resolveProxyUrl } from './config';
 import { jsonrepair } from 'jsonrepair';
 import type { SchemaModel } from '../types';
 
@@ -125,8 +125,9 @@ export async function sendChatMessage(
   history: ChatMessage[],
   schema: SchemaModel,
 ): Promise<ChatResponse> {
-  const apiKey = getEffectiveApiKey();
-  if (!apiKey) throw new Error('NO_API_KEY');
+  // Production: route through Edge proxy (keeps key server-side)
+  // Development: route through Vite proxy for Groq/OpenAI/OpenRouter
+  // The API key is never exposed to the frontend.
 
   const isDev =
     window.location.hostname === 'localhost' ||
@@ -159,7 +160,10 @@ export async function sendChatMessage(
       }),
     });
   } else {
-    // Development — call AI directly through Vite proxy
+    // Development — call AI directly through Vite proxy with localStorage key
+    const apiKey = localStorage.getItem('ai_api_key');
+    if (!apiKey) throw new Error('NO_API_KEY: Add api_api_key in AI Settings for development');
+    
     const baseUrl = resolveProxyUrl(getEffectiveBaseUrl());
     response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',

@@ -9,7 +9,7 @@
  */
 import { jsonrepair } from 'jsonrepair';
 import {
-  getModelChain, isRateLimitError,
+  isRateLimitError,
 } from '../config';
 import { aiRequest } from '../engine';
 import type { AISchemaResponse } from '../engine';
@@ -87,11 +87,7 @@ async function sleep(ms: number): Promise<void> {
 
 async function callAI(
   prompt: string,
-  modelIndex = 0,
 ): Promise<{ ok: boolean; status: number; body: string; modelUsed: string }> {
-  const chain = getModelChain();
-  const entry = chain[modelIndex] ?? chain[chain.length - 1]!;
-
   const { ok, status, data } = await aiRequest({
     messages: [
       { role: 'system', content: BATCH_SYSTEM_PROMPT },
@@ -100,14 +96,13 @@ async function callAI(
     temperature:     0.1,
     max_tokens:      TOKEN_CONFIG.maxOutputTokens,
     response_format: { type: 'json_object' },
-    modelIndex,
   });
 
   return {
     ok,
     status,
     body:      JSON.stringify(data),
-    modelUsed: entry.model,
+    modelUsed: 'backend-selected',
   };
 }
 
@@ -134,16 +129,13 @@ export async function analyzeBatch(
   onProgress?: (msg: string) => void,
 ): Promise<BatchResult> {
   const prompt    = buildBatchPrompt(batch, projectName);
-  const chain     = getModelChain();
   let retriesUsed = 0;
-  let modelIndex  = 0;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const modelName = chain[modelIndex]?.model ?? 'unknown';
-      onProgress?.(`Analyzing batch ${batch.id} with ${modelName} (attempt ${attempt + 1})…`);
+      onProgress?.(`Analyzing batch ${batch.id} (attempt ${attempt + 1})…`);
 
-      const { ok, status, body } = await callAI(prompt, modelIndex);
+      const { ok, status, body } = await callAI(prompt);
 
       if (ok) {
         const schema = parseResponse(body);
@@ -151,19 +143,10 @@ export async function analyzeBatch(
       }
 
       if (isRateLimitError(status, body)) {
-        // Try next model in chain
-        if (modelIndex < chain.length - 1) {
-          modelIndex++;
-          onProgress?.(`Rate limit on ${chain[modelIndex - 1]?.model} → trying ${chain[modelIndex]?.model}…`);
-          attempt--; // don't count switching model as a retry
-          continue;
-        }
-
-        // All models exhausted — wait and restart from model 0
+        // Rate limited — wait and retry
         const delay = RETRY_DELAYS_MS[Math.min(retriesUsed, RETRY_DELAYS_MS.length - 1)];
-        onProgress?.(`All models rate-limited — waiting ${delay / 1000}s…`);
+        onProgress?.(`Rate limited — waiting ${delay / 1000}s…`);
         await sleep(delay);
-        modelIndex = 0;
         retriesUsed++;
         continue;
       }

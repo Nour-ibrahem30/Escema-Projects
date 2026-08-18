@@ -1,9 +1,6 @@
 import { useState } from 'react';
 import {
-  getEffectiveApiKey,
-  getEffectiveBaseUrl,
-  getEffectiveModel,
-  resolveProxyUrl,
+  isAIAvailable,
 } from '../ai/config';
 import { jsonrepair } from 'jsonrepair';
 import { useSchemaStore } from '../stores/schemaStore';
@@ -17,8 +14,7 @@ type LintSuggestion = {
 };
 
 async function runLint(schema: SchemaModel): Promise<LintSuggestion[]> {
-  const apiKey = getEffectiveApiKey();
-  if (!apiKey) throw new Error('NO_API_KEY');
+  if (!isAIAvailable()) throw new Error('AI_NOT_CONFIGURED');
 
   const tables = schema.entities.map((e) => {
     const fields = e.fields
@@ -69,15 +65,13 @@ Check for:
 
 Reply message in same language as schema name. Output ONLY the JSON array.`;
 
-  const url   = `${resolveProxyUrl(getEffectiveBaseUrl())}/chat/completions`;
-  const model = getEffectiveModel();
-
-  const res = await fetch(url, {
+  const res = await fetch('/api/ai-proxy', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model, stream: false, temperature: 0.2, max_tokens: 2048,
       messages: [{ role: 'user', content: prompt }],
+      temperature: 0.2,
+      max_tokens: 2048,
     }),
   });
 
@@ -98,7 +92,7 @@ const SEV_CLASS = { error: 'error', warning: 'warning', tip: 'suggestion' };
 
 export function AILintPanel() {
   const schema  = useSchemaStore((s) => s.schema);
-  const hasKey  = Boolean(getEffectiveApiKey());
+  const hasKey = isAIAvailable();
   const hasData = schema.entities.length > 0;
 
   const [items, setItems]     = useState<LintSuggestion[]>([]);
@@ -130,7 +124,7 @@ export function AILintPanel() {
         </button>
       </div>
 
-      {!hasKey  && <p className="empty">Add VITE_AI_API_KEY to .env.local.</p>}
+      {!hasKey  && <p className="empty">AI requires configuration. In dev, use AI Settings modal.</p>}
       {!hasData && hasKey && <p className="empty">Build a schema first.</p>}
 
       {error && (

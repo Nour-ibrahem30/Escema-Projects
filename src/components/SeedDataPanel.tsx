@@ -1,9 +1,6 @@
 import { useState } from 'react';
 import {
-  getEffectiveApiKey,
-  getEffectiveBaseUrl,
-  getEffectiveModel,
-  resolveProxyUrl,
+  isAIAvailable,
 } from '../ai/config';
 import { jsonrepair } from 'jsonrepair';
 import { useSchemaStore } from '../stores/schemaStore';
@@ -16,8 +13,7 @@ async function generateSeedData(
   entityName: string,
   count: number,
 ): Promise<Record<string, unknown>[]> {
-  const apiKey = getEffectiveApiKey();
-  if (!apiKey) throw new Error('NO_API_KEY');
+  if (!isAIAvailable()) throw new Error('AI_NOT_CONFIGURED');
 
   const entity = schema.entities.find((e) => e.name === entityName);
   if (!entity) throw new Error('Entity not found');
@@ -46,15 +42,13 @@ Rules:
 - All non-nullable fields must be present
 - Respond ONLY with a JSON array of objects, nothing else`;
 
-  const url   = `${resolveProxyUrl(getEffectiveBaseUrl())}/chat/completions`;
-  const model = getEffectiveModel();
-
-  const res = await fetch(url, {
+  const res = await fetch('/api/ai-proxy', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model, stream: false, temperature: 0.9, max_tokens: 2048,
       messages: [{ role: 'user', content: prompt }],
+      temperature: 0.9,
+      max_tokens: 2048,
     }),
   });
 
@@ -106,7 +100,7 @@ function formatOutput(
 
 export function SeedDataPanel() {
   const schema = useSchemaStore((s) => s.schema);
-  const hasKey = Boolean(getEffectiveApiKey());
+  const hasKey = isAIAvailable();
   const hasData = schema.entities.length > 0;
 
   const [entityName, setEntityName] = useState('');
@@ -156,7 +150,7 @@ export function SeedDataPanel() {
         <h3>Seed Data Generator</h3>
       </div>
 
-      {!hasKey && <p className="empty">Add VITE_AI_API_KEY to .env.local to use this feature.</p>}
+      {!hasKey && <p className="empty">AI requires configuration. In dev, use AI Settings modal.</p>}
       {hasKey && !hasData && <p className="empty">Generate or build a schema first.</p>}
 
       {hasKey && hasData && (

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getEffectiveApiKey, getEffectiveBaseUrl, getEffectiveModel } from '../ai/config';
+import { getEffectiveBaseUrl, getEffectiveModel } from '../ai/config';
 
 type Props = {
   open: boolean;
@@ -27,9 +27,10 @@ const PRESET_PROVIDERS = [
     label: 'Groq',
     baseUrl: 'https://api.groq.com/openai/v1',
     models: [
-      'llama-3.3-70b-versatile',
-      'llama-3.1-8b-instant',
+      'openai/gpt-oss-120b',
       'qwen/qwen3.6-27b',
+      'openai/gpt-oss-20b',
+      'llama-3.1-8b-instant',
       'groq/compound',
       'groq/compound-mini',
     ],
@@ -171,9 +172,6 @@ export function AISettingsModal({ open, onClose }: Props) {
           </div>
 
           {/* Status */}
-          {getEffectiveApiKey() && (
-            <p className="settings-status ok">✓ API key is set</p>
-          )}
         </div>
 
         <div className="modal-footer">

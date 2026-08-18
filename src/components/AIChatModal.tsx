@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { sendChatMessage, type ChatMessage } from '../ai/chat';
 import { applyPatches } from '../ai/applyPatch';
-import { getEffectiveApiKey } from '../ai/config';
+import { isAIAvailable } from '../ai/config';
 import { useSchemaStore } from '../stores/schemaStore';
 import { useChatStore } from '../stores/chatStore';
 type Props = {
@@ -29,7 +29,7 @@ export function AIChatModal({ open, onClose }: Props) {
   const schema    = useSchemaStore((s) => s.schema);
   // Use getState() inside handlers so patches always get the LIVE store,
   // not a React-render-time snapshot that may be stale by the time we apply.
-  const hasKey    = Boolean(getEffectiveApiKey());
+  const hasKey    = isAIAvailable();
   const hasSchema = schema.entities.length > 0;
 
   const {
@@ -331,7 +331,7 @@ export function AIChatModal({ open, onClose }: Props) {
             {!hasKey && (
               <div className="no-key-banner" style={{ margin: '0 0 0.5rem' }}>
                 <span>⚠</span>
-                <span>Add <code>VITE_AI_API_KEY</code> to <code>.env.local</code> to enable AI Chat.</span>
+                <span>AI Chat requires configuration. In development, add an API key in AI Settings. In production, configure <code>AI_API_KEY</code> on your server.</span>
               </div>
             )}
             <div className="chat-input-row">
@@ -341,7 +341,7 @@ export function AIChatModal({ open, onClose }: Props) {
                 className="chat-input"
                 placeholder={
                   !hasKey
-                    ? 'Add VITE_AI_API_KEY to .env.local…'
+                    ? 'Configure AI in settings to start chatting…'
                     : 'اسألني أي شيء — schema، SQL، design patterns… (Enter to send)'
                 }
                 value={input}

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { generateSchema } from '../ai/engine';
 import { applyAISchema } from '../ai/applySchema';
-import { getEffectiveApiKey } from '../ai/config';
+import { isAIAvailable } from '../ai/config';
 import { useSchemaStore } from '../stores/schemaStore';
 import { useSchemaHistoryStore } from '../stores/schemaHistoryStore';
 
@@ -40,7 +40,7 @@ export function AICommandBar({ onSchemaGenerated }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef('');
 
-  const hasKey = Boolean(getEffectiveApiKey());
+  const hasKey = isAIAvailable();
 
   const handleSubmit = async () => {
     const trimmed = input.trim();
@@ -151,7 +151,7 @@ export function AICommandBar({ onSchemaGenerated }: Props) {
           <span>⚠</span>
           <span>
             AI is not configured. Create a <code>.env.local</code> file with{' '}
-            <code>VITE_AI_API_KEY=your-key</code> and restart the dev server.
+            API key in <code>.env.local</code> (dev) or Vercel (production).
             See <code>.env.example</code> for details.
           </span>
         </div>
@@ -179,7 +179,7 @@ export function AICommandBar({ onSchemaGenerated }: Props) {
           placeholder={
             hasKey
               ? 'اكتب طلبك… مثلاً: "ابني schema لمدرسة فيها طلاب ومدرسين"'
-              : 'Add VITE_AI_API_KEY to .env.local to enable AI…'
+              : 'AI requires configuration. See settings panel.'
           }
           value={input}
           onChange={(e) => setInput(e.target.value)}

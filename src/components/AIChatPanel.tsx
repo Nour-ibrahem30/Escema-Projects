@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { sendChatMessage, type ChatMessage } from '../ai/chat';
 import { applyPatches } from '../ai/applyPatch';
-import { getEffectiveApiKey } from '../ai/config';
+import { isAIAvailable } from '../ai/config';
 import { useSchemaStore } from '../stores/schemaStore';
 
 export function AIChatPanel() {
@@ -13,7 +13,7 @@ export function AIChatPanel() {
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
-  const hasKey    = Boolean(getEffectiveApiKey());
+  const hasKey    = isAIAvailable();
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -125,7 +125,7 @@ export function AIChatPanel() {
           className="chat-input"
           placeholder={
             !hasKey
-              ? 'Add VITE_AI_API_KEY to .env.local…'
+              ? 'AI requires configuration (see AI Settings)…'
               : !hasEntities
               ? 'Generate a schema first…'
               : 'Ask me to modify the schema…'

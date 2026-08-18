@@ -1,7 +1,6 @@
 import { SYSTEM_PROMPT, buildUserPrompt } from './prompt';
 import {
-  getEffectiveApiKey,
-  getModelChain, isRateLimitError, resolveProxyUrl,
+  isAIAvailable,
 } from './config';
 import { jsonrepair } from 'jsonrepair';
 import type { SchemaModel } from '../types';
@@ -55,114 +54,63 @@ export async function generateSchema(
   currentSchema: SchemaModel,
   callbacks: AIStreamCallbacks,
 ): Promise<void> {
-  const apiKey = getEffectiveApiKey();
-  if (!apiKey) {
-    callbacks.onError('NO_API_KEY');
+  if (!isAIAvailable()) {
+    callbacks.onError('AI_NOT_CONFIGURED');
     return;
   }
 
-  // Try each model in the chain on rate-limit errors
-  const chain = getModelChain();
-  let lastError = '';
+  try {
+    const { ok, status, data } = await aiRequest({
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user',   content: buildUserPrompt(userMessage, currentSchema) },
+      ],
+      temperature:     0.1,
+      max_tokens:      4096,
+      response_format: { type: 'json_object' },
+    });
 
-  for (let i = 0; i < chain.length; i++) {
-    const entry = chain[i]!;
-    try {
-      const { ok, status, data } = await aiRequest({
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user',   content: buildUserPrompt(userMessage, currentSchema) },
-        ],
-        temperature:     0.1,
-        max_tokens:      4096,
-        response_format: { type: 'json_object' },
-        modelIndex:      i,
-      });
-
-      const bodyStr = JSON.stringify(data);
-
-      if (!ok) {
-        if (isRateLimitError(status, bodyStr) && i < chain.length - 1) {
-          callbacks.onChunk(`Rate limit on ${entry.model} → trying ${chain[i + 1]!.model}…`);
-          continue;
-        }
-        callbacks.onError(`API error ${status}: ${bodyStr}`);
-        return;
-      }
-
-      callbacks.onChunk('Generating schema…');
-
-      const content = (data as { choices?: Array<{ message: { content: string } }> })
-        .choices?.[0]?.message?.content ?? '';
-
-      const parsed = parseAIResponse(content);
-      if (parsed) {
-        callbacks.onDone(parsed);
-      } else {
-        callbacks.onError('Could not parse AI response as JSON. Raw:\n' + content);
-      }
+    if (!ok) {
+      callbacks.onError(`API error ${status}: ${JSON.stringify(data)}`);
       return;
-
-    } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err);
-      if (i === chain.length - 1) callbacks.onError(lastError);
     }
+
+    callbacks.onChunk('Generating schema…');
+
+    const content = (data as { choices?: Array<{ message: { content: string } }> })
+      .choices?.[0]?.message?.content ?? '';
+
+    const parsed = parseAIResponse(content);
+    if (parsed) {
+      callbacks.onDone(parsed);
+    } else {
+      callbacks.onError('Could not parse AI response as JSON. Raw:\n' + content);
+    }
+  } catch (err) {
+    callbacks.onError(err instanceof Error ? err.message : String(err));
   }
 }
 
 /**
- * Makes an AI API call — routes through /api/ai-proxy in production,
- * through Vite dev proxy in development.
+ * Makes an AI API call through /api/ai-proxy in both production and development.
+ * The proxy handles model selection and fallback server-side.
  */
 export async function aiRequest(payload: {
   messages: { role: string; content: string }[];
   temperature?: number;
   max_tokens?: number;
   response_format?: { type: string };
-  modelIndex?: number;
 }): Promise<{ ok: boolean; status: number; data: unknown }> {
-  const isDev =
-    window.location.hostname === 'localhost' ||
-    window.location.hostname === '127.0.0.1';
-
-  if (!isDev) {
-    // Production: send to Vercel serverless proxy
-    const res = await fetch('/api/ai-proxy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messages:        payload.messages,
-        temperature:     payload.temperature,
-        max_tokens:      payload.max_tokens,
-        response_format: payload.response_format,
-      }),
-    });
-    const data = await res.json();
-    return { ok: res.ok, status: res.status, data };
-  }
-
-  // Development: call AI directly through Vite proxy
-  const chain  = getModelChain();
-  const index  = Math.min(payload.modelIndex ?? 0, chain.length - 1);
-  const entry  = chain[index]!;
-  const url    = `${resolveProxyUrl(entry.baseUrl)}/chat/completions`;
-
-  const res = await fetch(url, {
+  const res = await fetch('/api/ai-proxy', {
     method: 'POST',
-    headers: {
-      'Content-Type':  'application/json',
-      'Authorization': `Bearer ${entry.apiKey}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model:           entry.model,
       messages:        payload.messages,
-      temperature:     payload.temperature ?? 0.1,
-      max_tokens:      payload.max_tokens  ?? 4096,
+      temperature:     payload.temperature,
+      max_tokens:      payload.max_tokens,
       response_format: payload.response_format,
-      stream:          false,
     }),
   });
-
   const data = await res.json();
   return { ok: res.ok, status: res.status, data };
 }

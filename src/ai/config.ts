@@ -1,38 +1,41 @@
 /**
  * AI Configuration — reads from environment variables.
  *
- * Model fallback chain (tried in order on rate-limit / error):
- *   VITE_AI_MODEL           → primary   (e.g. llama-3.3-70b-versatile)
- *   VITE_AI_MODEL_FALLBACK_1 → fallback 1 (e.g. llama-3.1-8b-instant)
- *   VITE_AI_MODEL_FALLBACK_2 → fallback 2 (e.g. groq/compound)
- *   VITE_AI_MODEL_FALLBACK_3 → fallback 3 (e.g. groq/compound-mini)
+ * IMPORTANT: The frontend uses /api/ai-proxy in production.
+ * The actual API key is kept on the server (process.env.AI_API_KEY).
  *
- * Optional second provider:
- *   VITE_AI_FALLBACK_API_KEY
- *   VITE_AI_FALLBACK_BASE_URL
+ * Model fallback chain (tried in order on error/rate-limit):
+ *   VITE_AI_MODEL           → primary   (e.g. openai/gpt-oss-120b)
+ *   VITE_AI_MODEL_FALLBACK_1 → fallback 1 (e.g. qwen/qwen3.6-27b)
+ *   VITE_AI_MODEL_FALLBACK_2 → fallback 2 (e.g. openai/gpt-oss-20b)
+ *   VITE_AI_MODEL_FALLBACK_3 → fallback 3 (e.g. llama-3.1-8b-instant)
+ *
+ * Backend environment variables (Vercel Dashboard or .env in production):
+ *   AI_API_KEY            = your Groq/OpenAI/etc key (SECRET — never expose to frontend)
+ *   AI_BASE_URL           = https://api.groq.com/openai/v1
+ *   AI_MODEL              = openai/gpt-oss-120b
+ *   AI_MODEL_FALLBACK_1   = qwen/qwen3.6-27b
+ *   AI_MODEL_FALLBACK_2   = openai/gpt-oss-20b
+ *   AI_MODEL_FALLBACK_3   = llama-3.1-8b-instant
  */
 
 export const AI_CONFIG = {
-  apiKey:  import.meta.env.VITE_AI_API_KEY    as string | undefined,
-  baseUrl: (import.meta.env.VITE_AI_BASE_URL  as string | undefined) ?? 'https://api.groq.com/openai/v1',
+  // Frontend does NOT have direct access to the API key.
+  // All requests are routed through /api/ai-proxy which handles authentication.
+  baseUrl: (import.meta.env.VITE_AI_BASE_URL  as string | undefined) ?? '/api/ai-proxy',
 
-  // Model chain
-  model:    (import.meta.env.VITE_AI_MODEL            as string | undefined) ?? 'llama-3.3-70b-versatile',
-  fallback1: import.meta.env.VITE_AI_MODEL_FALLBACK_1  as string | undefined,
-  fallback2: import.meta.env.VITE_AI_MODEL_FALLBACK_2  as string | undefined,
-  fallback3: import.meta.env.VITE_AI_MODEL_FALLBACK_3  as string | undefined,
-
-  // Optional second provider
-  fallbackApiKey:  import.meta.env.VITE_AI_FALLBACK_API_KEY  as string | undefined,
-  fallbackBaseUrl: import.meta.env.VITE_AI_FALLBACK_BASE_URL  as string | undefined,
+  // Model chain — for informational purposes only.
+  // The server (api/ai-proxy.ts) controls actual model selection.
+  model:    (import.meta.env.VITE_AI_MODEL            as string | undefined) ?? 'openai/gpt-oss-120b',
+  fallback1: (import.meta.env.VITE_AI_MODEL_FALLBACK_1  as string | undefined) ?? 'qwen/qwen3.6-27b',
+  fallback2: (import.meta.env.VITE_AI_MODEL_FALLBACK_2  as string | undefined) ?? 'openai/gpt-oss-20b',
+  fallback3: (import.meta.env.VITE_AI_MODEL_FALLBACK_3  as string | undefined) ?? 'llama-3.1-8b-instant',
 };
 
 // ─── Primary ──────────────────────────────────────────────────────────────────
 
-export function getEffectiveApiKey(): string | null {
-  return AI_CONFIG.apiKey?.trim() || null;
-}
-
+// Frontend does NOT retrieve the API key directly.
+// This function now only returns the base URL (which routes to /api/ai-proxy).
 export function getEffectiveBaseUrl(): string {
   return AI_CONFIG.baseUrl;
 }
@@ -41,47 +44,35 @@ export function getEffectiveModel(): string {
   return AI_CONFIG.model;
 }
 
+/** Check if AI is available (for UI enable/disable) */
+export function isAIAvailable(): boolean {
+  const isDev =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' ||
+     window.location.hostname === '127.0.0.1');
+
+  if (!isDev) {
+    // In production, /api/ai-proxy should always be available (requires server config)
+    return true;
+  }
+
+  // In development, check if localStorage has an API key
+  return Boolean(localStorage.getItem('ai_api_key'));
+}
+
 // ─── Model fallback chain ─────────────────────────────────────────────────────
 
 /**
- * Returns all models in priority order.
- * The caller tries each model until one succeeds.
+ * Returns all models in priority order (for reference/UI only).
+ * The actual fallback is implemented server-side in api/ai-proxy.ts.
  */
-export function getModelChain(): Array<{ apiKey: string; baseUrl: string; model: string }> {
-  const primaryKey = AI_CONFIG.apiKey?.trim();
-  if (!primaryKey) return [];
-
-  const primaryUrl = AI_CONFIG.baseUrl;
-
-  const chain: Array<{ apiKey: string; baseUrl: string; model: string }> = [
-    { apiKey: primaryKey, baseUrl: primaryUrl, model: AI_CONFIG.model },
-  ];
-
-  // Fallback models on the same provider
-  if (AI_CONFIG.fallback1?.trim()) {
-    chain.push({ apiKey: primaryKey, baseUrl: primaryUrl, model: AI_CONFIG.fallback1.trim() });
-  }
-  if (AI_CONFIG.fallback2?.trim()) {
-    chain.push({ apiKey: primaryKey, baseUrl: primaryUrl, model: AI_CONFIG.fallback2.trim() });
-  }
-  if (AI_CONFIG.fallback3?.trim()) {
-    chain.push({ apiKey: primaryKey, baseUrl: primaryUrl, model: AI_CONFIG.fallback3.trim() });
-  }
-
-  // Optional second provider (different API key / base URL)
-  const fbKey = AI_CONFIG.fallbackApiKey?.trim() || primaryKey;
-  const fbUrl = AI_CONFIG.fallbackBaseUrl?.trim() || primaryUrl;
-  if (AI_CONFIG.fallbackBaseUrl?.trim()) {
-    chain.push({ apiKey: fbKey, baseUrl: fbUrl, model: AI_CONFIG.fallback1 ?? AI_CONFIG.model });
-  }
-
-  return chain;
-}
-
-/** Legacy — returns first fallback config or null */
-export function getFallbackConfig(): { apiKey: string; baseUrl: string; model: string } | null {
-  const chain = getModelChain();
-  return chain[1] ?? null;
+export function getModelChain(): string[] {
+  return [
+    AI_CONFIG.model,
+    AI_CONFIG.fallback1,
+    AI_CONFIG.fallback2,
+    AI_CONFIG.fallback3,
+  ].filter((m): m is string => Boolean(m));
 }
 
 /** Returns true if the error indicates a rate-limit or quota issue */

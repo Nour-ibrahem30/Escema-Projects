@@ -1,3 +1,4 @@
+/// <reference types="node" />
 /**
  * Vercel Edge Function — AI Proxy
  * Runs at the edge (closest region to the user) — no cold starts, global coverage.
@@ -5,10 +6,16 @@
  * Environment variables (set in Vercel Dashboard → Settings → Environment Variables):
  *   AI_API_KEY            = your Groq/OpenAI/etc key
  *   AI_BASE_URL           = https://api.groq.com/openai/v1
- *   AI_MODEL              = llama-3.3-70b-versatile
- *   AI_MODEL_FALLBACK_1   = llama-3.1-8b-instant
- *   AI_MODEL_FALLBACK_2   = (optional)
- *   AI_MODEL_FALLBACK_3   = (optional)
+ *   AI_MODEL              = openai/gpt-oss-120b
+ *   AI_MODEL_FALLBACK_1   = qwen/qwen3.6-27b
+ *   AI_MODEL_FALLBACK_2   = openai/gpt-oss-20b
+ *   AI_MODEL_FALLBACK_3   = llama-3.1-8b-instant
+ *
+ * The proxy implements intelligent fallback:
+ *   1. Try AI_MODEL
+ *   2. If not found (404), rate-limited (429), or quota exceeded (403), try AI_MODEL_FALLBACK_1
+ *   3. Continue until all models exhausted or success
+ *   4. Return response with _model_used to indicate which model was successful
  */
 
 export const config = { runtime: 'edge' };
@@ -132,8 +139,8 @@ export default async function handler(req: Request): Promise<Response> {
 
       const data = await upstream.json() as Record<string, unknown>;
 
-      // Rate limit → try next model
-      if ((upstream.status === 429 || upstream.status === 403) && i < chain.length - 1) {
+      // Rate limit (429), quota exceeded (403), or model not found (404) → try next model
+      if ((upstream.status === 429 || upstream.status === 403 || upstream.status === 404) && i < chain.length - 1) {
         continue;
       }
 
