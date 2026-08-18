@@ -28,18 +28,26 @@ function isAllowed(url: string): boolean {
 // ─── Model chain ──────────────────────────────────────────────────────────────
 
 function getChain(): { apiKey: string; baseUrl: string; model: string }[] {
-  const apiKey  = process.env.AI_API_KEY;
-  const baseUrl = process.env.AI_BASE_URL ?? 'https://api.groq.com/openai/v1';
+  const apiKey = process.env.AI_API_KEY?.trim();
+  const baseUrl =
+    process.env.AI_BASE_URL?.trim() || 'https://api.groq.com/openai/v1';
+
   if (!apiKey) return [];
 
-  return [
-    process.env.AI_MODEL            ?? 'llama-3.3-70b-versatile',
-    process.env.AI_MODEL_FALLBACK_1 ?? 'llama-3.1-8b-instant',
+  const models = [
+    process.env.AI_MODEL,
+    process.env.AI_MODEL_FALLBACK_1,
     process.env.AI_MODEL_FALLBACK_2,
     process.env.AI_MODEL_FALLBACK_3,
   ]
-    .filter(Boolean)
-    .map((model) => ({ apiKey, baseUrl, model: model as string }));
+    .map((model) => model?.trim())
+    .filter((model): model is string => Boolean(model));
+
+  return models.map((model) => ({
+    apiKey,
+    baseUrl,
+    model,
+  }));
 }
 
 // ─── CORS helpers ─────────────────────────────────────────────────────────────
