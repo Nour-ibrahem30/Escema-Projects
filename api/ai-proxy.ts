@@ -110,18 +110,18 @@ function parseRetryAfterSeconds(
 }
 
 /**
- * Classify why the request failed and build a user-friendly Arabic message.
- * Also returns `retryAfterSecs` so the frontend can show a live countdown.
+ * Classify why the request failed and build a user-friendly message.
+ * Language is determined by the `lang` field sent by the frontend.
+ * Also returns `retry_after_secs` so the frontend can show a live countdown.
  */
 function buildErrorPayload(
   status: number,
   headers: Headers,
   body: Record<string, unknown>,
+  lang: 'ar' | 'en' = 'ar',
 ): { error: string; error_code: string; retry_after_secs: number | null } {
   const retryAfterSecs = parseRetryAfterSeconds(headers, body);
-  const retryMsg = retryAfterSecs !== null
-    ? formatRetryTime(retryAfterSecs)
-    : null;
+  const retryMsg = retryAfterSecs !== null ? formatRetryTime(retryAfterSecs, lang) : null;
 
   if (status === 429) {
     const errMsg = (body?.error as { message?: string } | undefined)?.message ?? '';
@@ -129,17 +129,17 @@ function buildErrorPayload(
 
     if (isDaily) {
       return {
-        error: retryMsg
-          ? `وصلت للحد اليومي للاستخدام. جرب بعد ${retryMsg}.`
-          : 'وصلت للحد اليومي للاستخدام. جرب غداً.',
+        error: lang === 'en'
+          ? (retryMsg ? `Daily usage limit reached. Try again in ${retryMsg}.` : 'Daily usage limit reached. Try tomorrow.')
+          : (retryMsg ? `وصلت للحد اليومي للاستخدام. جرب بعد ${retryMsg}.` : 'وصلت للحد اليومي للاستخدام. جرب غداً.'),
         error_code: 'DAILY_LIMIT',
         retry_after_secs: retryAfterSecs,
       };
     }
     return {
-      error: retryMsg
-        ? `الخدمة مشغولة الآن (rate limit). جرب بعد ${retryMsg}.`
-        : 'الخدمة مشغولة الآن. جرب بعد دقيقة.',
+      error: lang === 'en'
+        ? (retryMsg ? `Service is busy (rate limit). Try again in ${retryMsg}.` : 'Service is busy. Try again in a minute.')
+        : (retryMsg ? `الخدمة مشغولة الآن (rate limit). جرب بعد ${retryMsg}.` : 'الخدمة مشغولة الآن. جرب بعد دقيقة.'),
       error_code: 'RATE_LIMIT',
       retry_after_secs: retryAfterSecs,
     };
@@ -147,7 +147,9 @@ function buildErrorPayload(
 
   if (status === 403) {
     return {
-      error: 'تم تجاوز الحصة المسموح بها. سيتم التجديد قريباً.',
+      error: lang === 'en'
+        ? 'Usage quota exceeded. It will reset soon.'
+        : 'تم تجاوز الحصة المسموح بها. سيتم التجديد قريباً.',
       error_code: 'QUOTA_EXCEEDED',
       retry_after_secs: retryAfterSecs,
     };
@@ -155,7 +157,9 @@ function buildErrorPayload(
 
   if (status === 503 || status === 502) {
     return {
-      error: 'الخدمة غير متاحة مؤقتاً. جرب بعد دقائق.',
+      error: lang === 'en'
+        ? 'Service temporarily unavailable. Try again in a few minutes.'
+        : 'الخدمة غير متاحة مؤقتاً. جرب بعد دقائق.',
       error_code: 'SERVICE_DOWN',
       retry_after_secs: retryAfterSecs ?? 60,
     };
@@ -163,29 +167,42 @@ function buildErrorPayload(
 
   if (status === 500) {
     return {
-      error: 'حدث خطأ في الخادم. جرب مرة أخرى.',
+      error: lang === 'en' ? 'Server error. Please try again.' : 'حدث خطأ في الخادم. جرب مرة أخرى.',
       error_code: 'SERVER_ERROR',
       retry_after_secs: null,
     };
   }
 
   return {
-    error: 'حدث خطأ غير متوقع. جرب مرة أخرى.',
+    error: lang === 'en' ? 'An unexpected error occurred. Please try again.' : 'حدث خطأ غير متوقع. جرب مرة أخرى.',
     error_code: 'UNKNOWN',
     retry_after_secs: null,
   };
 }
 
-/** Format seconds into Arabic human-readable string */
-function formatRetryTime(secs: number): string {
-  if (secs < 60)   return `${secs} ثانية`;
-  if (secs < 3600) {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return s > 0 ? `${m} دقيقة و${s} ثانية` : `${m} دقيقة`;
+/** Format seconds into a human-readable string in the given language */
+function formatRetryTime(secs: number, lang: 'ar' | 'en' = 'ar'): string {
+  const s = Math.ceil(secs);
+  if (lang === 'en') {
+    if (s < 60)   return `${s} second${s === 1 ? '' : 's'}`;
+    if (s < 3600) {
+      const m = Math.floor(s / 60);
+      const rem = s % 60;
+      return rem > 0 ? `${m} min ${rem}s` : `${m} minute${m === 1 ? '' : 's'}`;
+    }
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    return m > 0 ? `${h}h ${m}m` : `${h} hour${h === 1 ? '' : 's'}`;
   }
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
+  // Arabic
+  if (s < 60)   return `${s} ثانية`;
+  if (s < 3600) {
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return rem > 0 ? `${m} دقيقة و${rem} ثانية` : `${m} دقيقة`;
+  }
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
   return m > 0 ? `${h} ساعة و${m} دقيقة` : `${h} ساعة`;
 }
 
@@ -280,12 +297,14 @@ export default async function handler(req: Request): Promise<Response> {
 
   // Parse request body
   let body: {
-    messages?:       unknown[];
-    temperature?:    number;
-    max_tokens?:     number;
+    messages?:        unknown[];
+    temperature?:     number;
+    max_tokens?:      number;
     response_format?: unknown;
-    task_type?:      string;
+    task_type?:       string;
     preferred_model?: string;
+    /** Language of the user's last message — 'ar' | 'en'. Defaults to 'ar'. */
+    lang?:            'ar' | 'en';
   };
 
   try {
@@ -302,6 +321,7 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
+  const lang  = body.lang ?? 'ar';
   const chain = getChainForTask(
     allModels,
     body.task_type   ?? 'default',
@@ -343,7 +363,7 @@ export default async function handler(req: Request): Promise<Response> {
 
       // All models exhausted or non-retryable error — build detailed error payload
       if (!upstream.ok) {
-        const errPayload = buildErrorPayload(upstream.status, upstream.headers, data);
+        const errPayload = buildErrorPayload(upstream.status, upstream.headers, data, lang);
         return new Response(
           JSON.stringify(errPayload),
           { status: upstream.status, headers: { ...cors, 'Content-Type': 'application/json' } },
@@ -362,7 +382,9 @@ export default async function handler(req: Request): Promise<Response> {
       if (i === chain.length - 1) {
         return new Response(
           JSON.stringify({
-            error: 'حدث خطأ في الاتصال بالخدمة. تحقق من اتصالك بالإنترنت وحاول مرة أخرى.',
+            error: lang === 'en'
+              ? 'Connection error. Check your internet and try again.'
+              : 'حدث خطأ في الاتصال بالخدمة. تحقق من اتصالك بالإنترنت وحاول مرة أخرى.',
             error_code: 'NETWORK_ERROR',
             retry_after_secs: null,
           }),
@@ -375,7 +397,9 @@ export default async function handler(req: Request): Promise<Response> {
 
   return new Response(
     JSON.stringify({
-      error: 'جميع خدمات الذكاء الاصطناعي غير متاحة حالياً. جرب بعد دقائق.',
+      error: lang === 'en'
+        ? 'All AI services are currently unavailable. Try again in a few minutes.'
+        : 'جميع خدمات الذكاء الاصطناعي غير متاحة حالياً. جرب بعد دقائق.',
       error_code: 'ALL_MODELS_DOWN',
       retry_after_secs: 300,
     }),

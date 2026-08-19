@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { generateSchema } from '../ai/engine';
 import { applyAISchema } from '../ai/applySchema';
 import { parseAIError } from '../ai/errorHandler';
+import { detectLang, type Lang } from '../ai/i18n';
 import { useSchemaStore } from '../stores/schemaStore';
 import { useSchemaHistoryStore } from '../stores/schemaHistoryStore';
 
@@ -18,13 +19,8 @@ const EXAMPLE_PROMPTS = [
 ];
 
 type Props = {
-  onSchemaGenerated?: (lang: 'ar' | 'en') => void;
+  onSchemaGenerated?: (lang: Lang) => void;
 };
-
-function detectLang(text: string): 'ar' | 'en' {
-  const arabic = (text.match(/[\u0600-\u06FF]/g) ?? []).length;
-  return arabic > text.length * 0.15 ? 'ar' : 'en';
-}
 
 export function AICommandBar({ onSchemaGenerated }: Props) {
   const schema = useSchemaStore((s) => s.schema);
@@ -37,6 +33,7 @@ export function AICommandBar({ onSchemaGenerated }: Props) {
   const [errorMsg, setErrorMsg]     = useState('');
   const [showExamples, setShowExamples]       = useState(false);
   const [retryCountdown, setRetryCountdown]   = useState<number | null>(null);
+  const [inputLang, setInputLang]   = useState<Lang>('ar');
 
   const inputRef     = useRef<HTMLInputElement>(null);
   const streamRef    = useRef('');
@@ -63,6 +60,9 @@ export function AICommandBar({ onSchemaGenerated }: Props) {
     const trimmed = input.trim();
     if (!trimmed || status === 'loading' || status === 'streaming') return;
 
+    const lang = detectLang(trimmed);
+    setInputLang(lang);
+
     setStatus('loading');
     setStreamText('');
     setErrorMsg('');
@@ -76,23 +76,23 @@ export function AICommandBar({ onSchemaGenerated }: Props) {
       },
       onDone: (result) => {
         applyAISchema(result, store);
-        // Save to history — read the fresh schema after applying
         const freshSchema = useSchemaStore.getState().schema;
         addHistoryEntry(trimmed, freshSchema);
-        onSchemaGenerated?.(detectLang(input));
+        onSchemaGenerated?.(lang);
         setStatus('done');
         setInput('');
         setTimeout(() => setStatus('idle'), 3000);
       },
       onError: (err) => {
-        const msg =
-          err === 'NO_API_KEY' || err === 'AI_NOT_CONFIGURED'
-            ? 'خدمة الذكاء الاصطناعي غير متاحة حالياً. حاول مرة أخرى لاحقاً.'
-            : err;
+        const notConfigured = err === 'NO_API_KEY' || err === 'AI_NOT_CONFIGURED';
+        const msg = notConfigured
+          ? (lang === 'en'
+              ? 'AI service is not available right now. Please try again later.'
+              : 'خدمة الذكاء الاصطناعي غير متاحة حالياً. حاول مرة أخرى لاحقاً.')
+          : err;
         setErrorMsg(msg);
         setStatus('error');
-        // Try to extract retry_after_secs embedded in the message
-        const { retryAfterSecs } = parseAIError(JSON.stringify({ error: msg }));
+        const { retryAfterSecs } = parseAIError(JSON.stringify({ error: msg }), lang);
         if (retryAfterSecs) startCountdown(retryAfterSecs);
       },
     });
@@ -113,13 +113,9 @@ export function AICommandBar({ onSchemaGenerated }: Props) {
   }, []);
 
   const statusIcon = { idle: '✦', loading: '⟳', streaming: '⟳', done: '✓', error: '✕' }[status];
-  const statusTitle = {
-    idle:      'AI جاهز',
-    loading:   'جاري المعالجة…',
-    streaming: 'جاري التوليد…',
-    done:      'تم بناء الـ Schema!',
-    error:     'حدث خطأ',
-  }[status];
+  const statusTitle = inputLang === 'en'
+    ? { idle: 'AI ready', loading: 'Processing…', streaming: 'Generating…', done: 'Schema built!', error: 'Error' }[status]
+    : { idle: 'AI جاهز', loading: 'جاري المعالجة…', streaming: 'جاري التوليد…', done: 'تم بناء الـ Schema!', error: 'حدث خطأ' }[status];
 
   return (
     <div className="command-bar-wrapper">
@@ -150,7 +146,7 @@ export function AICommandBar({ onSchemaGenerated }: Props) {
         <div className="stream-preview">
           <div className="stream-header">
             <span className="spin">⟳</span>
-            <span>Generating schema…</span>
+            <span>{inputLang === 'en' ? 'Generating schema…' : 'جاري توليد الـ schema…'}</span>
           </div>
           {streamText && <pre className="stream-text">{streamText}</pre>}
         </div>
@@ -164,7 +160,9 @@ export function AICommandBar({ onSchemaGenerated }: Props) {
           {retryCountdown !== null && (
             <span className="chat-error-countdown">⏱ {retryCountdown}s</span>
           )}
-          <button type="button" onClick={() => { setStatus('idle'); setRetryCountdown(null); }}>تجاهل</button>
+          <button type="button" onClick={() => { setStatus('idle'); setRetryCountdown(null); }}>
+            {inputLang === 'en' ? 'Dismiss' : 'تجاهل'}
+          </button>
         </div>
       )}
 
@@ -187,7 +185,10 @@ export function AICommandBar({ onSchemaGenerated }: Props) {
         <input
           ref={inputRef}
           type="text"
-          placeholder='اكتب طلبك… مثلاً: "ابني schema لمدرسة فيها طلاب ومدرسين"'
+          placeholder={inputLang === 'en'
+            ? 'Describe your schema… e.g. "Build a school schema with students and teachers"'
+            : 'اكتب طلبك… مثلاً: "ابني schema لمدرسة فيها طلاب ومدرسين"'
+          }
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}

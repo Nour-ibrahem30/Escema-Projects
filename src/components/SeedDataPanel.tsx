@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import {
-  isAIAvailable,
-} from '../ai/config';
+import { isAIAvailable } from '../ai/config';
+import { detectLang, type Lang } from '../ai/i18n';
 import { jsonrepair } from 'jsonrepair';
 import { useSchemaStore } from '../stores/schemaStore';
 import type { SchemaModel } from '../types';
@@ -12,6 +11,7 @@ async function generateSeedData(
   schema: SchemaModel,
   entityName: string,
   count: number,
+  lang: Lang,
 ): Promise<Record<string, unknown>[]> {
   if (!isAIAvailable()) throw new Error('AI_NOT_CONFIGURED');
 
@@ -46,10 +46,11 @@ Rules:
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      messages:  [{ role: 'user', content: prompt }],
+      messages:    [{ role: 'user', content: prompt }],
       temperature: 0.9,
       max_tokens:  2048,
       task_type:   'simple',
+      lang,
     }),
   });
 
@@ -111,13 +112,14 @@ export function SeedDataPanel() {
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState('');
   const [copied, setCopied]         = useState(false);
+  const lang = detectLang(schema.name);
 
   const handleGenerate = async () => {
     if (!entityName) return;
     setLoading(true);
     setError('');
     try {
-      const result = await generateSeedData(schema, entityName, count);
+      const result = await generateSeedData(schema, entityName, count, lang);
       setRows(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -151,8 +153,8 @@ export function SeedDataPanel() {
         <h3>Seed Data Generator</h3>
       </div>
 
-      {!hasKey && <p className="empty">AI requires configuration. In dev, use AI Settings modal.</p>}
-      {hasKey && !hasData && <p className="empty">Generate or build a schema first.</p>}
+      {!hasKey  && <p className="empty">{lang === 'en' ? 'AI is not configured.' : 'الـ AI غير متاح.'}</p>}
+      {hasKey && !hasData && <p className="empty">{lang === 'en' ? 'Build a schema first.' : 'أنشئ schema أولاً.'}</p>}
 
       {hasKey && hasData && (
         <>
@@ -203,7 +205,7 @@ export function SeedDataPanel() {
               disabled={!entityName || loading}
               style={{ alignSelf: 'flex-end' }}
             >
-              {loading ? <span className="spin">⟳</span> : '▶ Generate'}
+              {loading ? <span className="spin">⟳</span> : (lang === 'en' ? '▶ Generate' : '▶ توليد')}
             </button>
           </div>
 
@@ -217,10 +219,10 @@ export function SeedDataPanel() {
             <>
               <div className="export-actions" style={{ marginTop: '0.5rem' }}>
                 <button type="button" className="btn-secondary" onClick={handleCopy}>
-                  {copied ? '✓ Copied' : 'Copy'}
+                  {copied ? (lang === 'en' ? '✓ Copied' : '✓ تم النسخ') : (lang === 'en' ? 'Copy' : 'نسخ')}
                 </button>
                 <button type="button" className="btn-secondary" onClick={handleDownload}>
-                  Download
+                  {lang === 'en' ? 'Download' : 'تحميل'}
                 </button>
               </div>
               <pre className="export-code">{output}</pre>

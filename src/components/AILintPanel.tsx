@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import {
-  isAIAvailable,
-} from '../ai/config';
+import { isAIAvailable } from '../ai/config';
+import { detectLang, type Lang } from '../ai/i18n';
 import { jsonrepair } from 'jsonrepair';
 import { useSchemaStore } from '../stores/schemaStore';
 import type { SchemaModel } from '../types';
@@ -13,7 +12,7 @@ type LintSuggestion = {
   fix?: string;
 };
 
-async function runLint(schema: SchemaModel): Promise<LintSuggestion[]> {
+async function runLint(schema: SchemaModel, lang: Lang): Promise<LintSuggestion[]> {
   if (!isAIAvailable()) throw new Error('AI_NOT_CONFIGURED');
 
   const tables = schema.entities.map((e) => {
@@ -29,6 +28,7 @@ async function runLint(schema: SchemaModel): Promise<LintSuggestion[]> {
     return `${src} → ${tgt} (${r.type})`;
   }).join('\n');
 
+  const replyLang = lang === 'en' ? 'English' : 'Arabic';
   const prompt = `You are a senior database architect reviewing a schema. Provide specific, actionable feedback.
 
 Schema: "${schema.name}"
@@ -63,7 +63,7 @@ Check for:
 - Security concerns (password fields, sensitive data)
 - Normalization issues
 
-Reply message in same language as schema name. Output ONLY the JSON array.`;
+IMPORTANT: Reply in ${replyLang}. Output ONLY the JSON array.`;
 
   const res = await fetch('/api/ai-proxy', {
     method: 'POST',
@@ -73,6 +73,7 @@ Reply message in same language as schema name. Output ONLY the JSON array.`;
       temperature: 0.2,
       max_tokens:  2048,
       task_type:   'analysis',
+      lang,
     }),
   });
 
@@ -100,11 +101,14 @@ export function AILintPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
   const [ran, setRan]         = useState(false);
+  const [lang, setLang]       = useState<Lang>('ar');
 
   const handleRun = async () => {
+    const detectedLang = detectLang(schema.name);
+    setLang(detectedLang);
     setLoading(true); setError('');
     try {
-      setItems(await runLint(schema));
+      setItems(await runLint(schema, detectedLang));
       setRan(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -125,8 +129,8 @@ export function AILintPanel() {
         </button>
       </div>
 
-      {!hasKey  && <p className="empty">AI requires configuration. In dev, use AI Settings modal.</p>}
-      {!hasData && hasKey && <p className="empty">Build a schema first.</p>}
+      {!hasKey  && <p className="empty">{lang === 'en' ? 'AI is not configured.' : 'الـ AI غير متاح.'}</p>}
+      {!hasData && hasKey && <p className="empty">{lang === 'en' ? 'Build a schema first.' : 'أنشئ schema أولاً.'}</p>}
 
       {error && (
         <div className="command-error" style={{ borderRadius: '0.375rem', marginTop: '0.5rem' }}>
@@ -136,7 +140,7 @@ export function AILintPanel() {
 
       {ran && items.length === 0 && !loading && (
         <p className="validation-ok" style={{ marginTop: '0.75rem' }}>
-          ✓ Schema looks great — no issues found!
+          {lang === 'en' ? '✓ Schema looks great — no issues found!' : '✓ الـ Schema ممتاز — لا توجد مشاكل!'}
         </p>
       )}
 

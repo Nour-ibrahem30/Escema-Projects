@@ -3,6 +3,7 @@ import { sendChatMessage, type ChatMessage } from '../ai/chat';
 import { applyPatches, type ApplyPatchResult } from '../ai/applyPatch';
 import { AVAILABLE_MODELS, DEFAULT_MODEL_ID } from '../ai/config';
 import { parseAIError } from '../ai/errorHandler';
+import { detectLang, type Lang } from '../ai/i18n';
 import { useSchemaStore } from '../stores/schemaStore';
 import { useChatStore, type ChatEntry } from '../stores/chatStore';
 
@@ -49,6 +50,8 @@ export function AIChatPanel() {
   const [selectedModel, setSelectedModel]   = useState(DEFAULT_MODEL_ID);
   const [showModelMenu, setShowModelMenu]   = useState(false);
   const [showHistory, setShowHistory]       = useState(false);
+  // Track language of the last sent message for UI localisation
+  const [uiLang, setUiLang]                 = useState<Lang>('ar');
 
   const bottomRef      = useRef<HTMLDivElement>(null);
   const modelMenuRef   = useRef<HTMLDivElement>(null);
@@ -93,6 +96,9 @@ export function AIChatPanel() {
     const trimmed = input.trim();
     if (!trimmed || loading) return;
 
+    const lang = detectLang(trimmed);
+    setUiLang(lang);
+
     // Make sure we have an active conversation
     let convId = activeConversationId;
     if (!convId) {
@@ -125,8 +131,9 @@ export function AIChatPanel() {
       };
       addMessage(convId, assistantEntry);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'حدث خطأ، حاول مرة أخرى.';
-      const { retryAfterSecs } = parseAIError(JSON.stringify({ error: msg }));
+      const msg = err instanceof Error ? err.message
+        : (uiLang === 'en' ? 'An error occurred. Please try again.' : 'حدث خطأ، حاول مرة أخرى.');
+      const { retryAfterSecs } = parseAIError(JSON.stringify({ error: msg }), uiLang);
       setError(msg);
       if (retryAfterSecs) startCountdown(retryAfterSecs);
     } finally {
@@ -134,23 +141,35 @@ export function AIChatPanel() {
     }
   };
 
-  const SUGGESTIONS = schema.entities.length > 0 ? [
+  const firstName = schema.entities[0]?.name ?? 'Entity';
+  const SUGGESTIONS_AR = schema.entities.length > 0 ? [
     `أضف entity للـ notifications`,
     `Add a soft-delete field to all entities`,
     `What indexes should I add to improve performance?`,
-    `أضف enum للـ status field في ${schema.entities[0]?.name ?? 'Entity'}`,
-    `Rename ${schema.entities[0]?.name ?? 'Entity'} to something more descriptive`,
+    `أضف enum للـ status field في ${firstName}`,
+    `Rename ${firstName} to something more descriptive`,
   ] : [
     `ابني schema لمتجر إلكتروني`,
     `Create a blog schema with posts and comments`,
   ];
+  const SUGGESTIONS_EN = schema.entities.length > 0 ? [
+    `Add a notifications entity`,
+    `Add a soft-delete field to all entities`,
+    `What indexes should I add to improve performance?`,
+    `Add a status enum to ${firstName}`,
+    `Rename ${firstName} to something more descriptive`,
+  ] : [
+    `Build a schema for an e-commerce store`,
+    `Create a blog schema with posts and comments`,
+  ];
+  const SUGGESTIONS = uiLang === 'en' ? SUGGESTIONS_EN : SUGGESTIONS_AR;
 
   return (
     <div className="chat-panel">
 
       {/* ── Model selector bar ── */}
       <div className="chat-model-bar" ref={modelMenuRef}>
-        <span className="chat-model-label">الـ Model:</span>
+        <span className="chat-model-label">{uiLang === 'en' ? 'Model:' : 'الـ Model:'}</span>
         <button
           type="button"
           className="chat-model-btn"
@@ -181,7 +200,7 @@ export function AIChatPanel() {
         <button
           type="button"
           className="chat-history-toggle"
-          title="المحادثات المحفوظة"
+          title={uiLang === 'en' ? 'Saved conversations' : 'المحادثات المحفوظة'}
           onClick={() => setShowHistory((v) => !v)}
         >
           🕐 {conversations.length}
@@ -192,14 +211,18 @@ export function AIChatPanel() {
       {showHistory && (
         <div className="chat-history-drawer">
           <div className="chat-history-header">
-            <span>المحادثات المحفوظة</span>
+            <span>{uiLang === 'en' ? 'Saved conversations' : 'المحادثات المحفوظة'}</span>
             <button type="button" className="btn-icon" onClick={() => {
               newConversation(schema.name);
               setShowHistory(false);
-            }}>＋ محادثة جديدة</button>
+            }}>
+              {uiLang === 'en' ? '＋ New chat' : '＋ محادثة جديدة'}
+            </button>
           </div>
           {conversations.length === 0 && (
-            <p className="chat-history-empty">لا توجد محادثات محفوظة</p>
+            <p className="chat-history-empty">
+              {uiLang === 'en' ? 'No saved conversations' : 'لا توجد محادثات محفوظة'}
+            </p>
           )}
           {conversations.map((conv) => (
             <div
@@ -212,12 +235,16 @@ export function AIChatPanel() {
                 onClick={() => { selectConversation(conv.id); setShowHistory(false); }}
               >
                 <span className="chat-history-title">{conv.title}</span>
-                <span className="chat-history-meta">{conv.messages.length} رسالة</span>
+                <span className="chat-history-meta">
+                  {uiLang === 'en'
+                    ? `${conv.messages.length} message${conv.messages.length === 1 ? '' : 's'}`
+                    : `${conv.messages.length} رسالة`}
+                </span>
               </button>
               <button
                 type="button"
                 className="chat-history-delete btn-icon danger"
-                title="حذف المحادثة"
+                title={uiLang === 'en' ? 'Delete conversation' : 'حذف المحادثة'}
                 onClick={() => deleteConversation(conv.id)}
               >
                 ✕
@@ -234,8 +261,12 @@ export function AIChatPanel() {
             <div className="chat-empty-icon">💬</div>
             <p>
               {hasEntities
-                ? 'اسألني لتعديل الـ schema — أضف entities أو fields أو علاقات، أو اسألني أي سؤال.'
-                : 'ولّد schema أولاً من شريط الـ AI في الأسفل، ثم ارجع هنا للتعديل.'}
+                ? (uiLang === 'en'
+                    ? 'Ask me to edit the schema — add entities, fields, relationships, or ask any question.'
+                    : 'اسألني لتعديل الـ schema — أضف entities أو fields أو علاقات، أو اسألني أي سؤال.')
+                : (uiLang === 'en'
+                    ? 'Generate a schema first using the AI bar below, then come back to edit it.'
+                    : 'ولّد schema أولاً من شريط الـ AI في الأسفل، ثم ارجع هنا للتعديل.')}
             </p>
             <div className="chat-suggestions">
               {SUGGESTIONS.map((s) => (
@@ -282,7 +313,7 @@ export function AIChatPanel() {
         {loading && (
           <div className="chat-message assistant">
             <div className="chat-bubble loading">
-              <span className="spin">⟳</span> جاري التفكير…
+              <span className="spin">⟳</span> {uiLang === 'en' ? 'Thinking…' : 'جاري التفكير…'}
             </div>
           </div>
         )}
@@ -295,7 +326,9 @@ export function AIChatPanel() {
                 ⏱ {retryCountdown}s
               </span>
             )}
-            <button type="button" onClick={() => { setError(''); setRetryCountdown(null); }}>تجاهل</button>
+            <button type="button" onClick={() => { setError(''); setRetryCountdown(null); }}>
+              {uiLang === 'en' ? 'Dismiss' : 'تجاهل'}
+            </button>
           </div>
         )}
 
@@ -309,8 +342,8 @@ export function AIChatPanel() {
           className="chat-input"
           placeholder={
             !hasEntities
-              ? 'ولّد schema أولاً…'
-              : 'اسألني لتعديل الـ schema…'
+              ? (uiLang === 'en' ? 'Generate a schema first…' : 'ولّد schema أولاً…')
+              : (uiLang === 'en' ? 'Ask me to edit the schema…' : 'اسألني لتعديل الـ schema…')
           }
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -330,10 +363,8 @@ export function AIChatPanel() {
           <button
             type="button"
             className="btn-icon"
-            title="محادثة جديدة"
-            onClick={() => {
-              newConversation(schema.name);
-            }}
+            title={uiLang === 'en' ? 'New conversation' : 'محادثة جديدة'}
+            onClick={() => newConversation(schema.name)}
           >
             🗑
           </button>

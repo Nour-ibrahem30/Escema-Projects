@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import {
-  isAIAvailable,
-} from '../ai/config';
+import { isAIAvailable } from '../ai/config';
+import { detectLang, type Lang } from '../ai/i18n';
 import { jsonrepair } from 'jsonrepair';
 import { useSchemaStore } from '../stores/schemaStore';
 import type { SchemaModel } from '../types';
@@ -16,6 +15,7 @@ type QueryResult = {
 async function buildQuery(
   schema: SchemaModel,
   question: string,
+  lang: Lang,
 ): Promise<QueryResult> {
   if (!isAIAvailable()) throw new Error('AI_NOT_CONFIGURED');
 
@@ -32,6 +32,7 @@ async function buildQuery(
     return `${src} ${r.type} ${tgt}`;
   }).join('\n');
 
+  const replyLang = lang === 'en' ? 'English' : 'Arabic';
   const prompt = `You are a SQL expert. Generate a PostgreSQL query for the following request.
 
 Database Schema:
@@ -45,7 +46,7 @@ User request: "${question}"
 Respond ONLY with a JSON object:
 {
   "sql": "SELECT ...",
-  "explanation": "Brief explanation of what this query does (in the same language as the user request)"
+  "explanation": "Brief explanation of what this query does. Reply in ${replyLang}."
 }`;
 
   const res = await fetch('/api/ai-proxy', {
@@ -57,6 +58,7 @@ Respond ONLY with a JSON object:
       max_tokens:      1024,
       response_format: { type: 'json_object' },
       task_type:       'simple',
+      lang,
     }),
   });
 
@@ -89,14 +91,17 @@ export function QueryBuilderPanel() {
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState('');
   const [copied, setCopied]     = useState(false);
+  const [uiLang, setUiLang]     = useState<Lang>('ar');
 
   const handleBuild = async () => {
     const trimmed = question.trim();
     if (!trimmed || loading) return;
+    const lang = detectLang(trimmed);
+    setUiLang(lang);
     setLoading(true);
     setError('');
     try {
-      const res = await buildQuery(schema, trimmed);
+      const res = await buildQuery(schema, trimmed, lang);
       setResult(res);
       setHistory((h) => [{ q: trimmed, r: res }, ...h.slice(0, 9)]);
     } catch (err) {
@@ -119,8 +124,8 @@ export function QueryBuilderPanel() {
         <h3>Query Builder</h3>
       </div>
 
-      {!hasKey && <p className="empty">AI requires configuration. In dev, use AI Settings modal.</p>}
-      {hasKey && !hasData && <p className="empty">Generate or build a schema first.</p>}
+      {!hasKey  && <p className="empty">{uiLang === 'en' ? 'AI is not configured.' : 'الـ AI غير متاح.'}</p>}
+      {hasKey && !hasData && <p className="empty">{uiLang === 'en' ? 'Build a schema first.' : 'أنشئ schema أولاً.'}</p>}
 
       {hasKey && hasData && (
         <>
@@ -143,7 +148,9 @@ export function QueryBuilderPanel() {
             <input
               type="text"
               className="chat-input"
-              placeholder='اكتب سؤالك… مثلاً "اجلب كل الطلبات مع بيانات المستخدم"'
+              placeholder={uiLang === 'en'
+                ? 'Type your question… e.g. "Get all orders with user data"'
+                : 'اكتب سؤالك… مثلاً "اجلب كل الطلبات مع بيانات المستخدم"'}
               value={question}
               dir="auto"
               onChange={(e) => setQuestion(e.target.value)}
@@ -172,7 +179,7 @@ export function QueryBuilderPanel() {
               <div className="query-explanation">{result.explanation}</div>
               <div className="export-actions">
                 <button type="button" className="btn-secondary" onClick={handleCopy}>
-                  {copied ? '✓ Copied' : 'Copy SQL'}
+                  {copied ? (uiLang === 'en' ? '✓ Copied' : '✓ تم النسخ') : (uiLang === 'en' ? 'Copy SQL' : 'نسخ SQL')}
                 </button>
               </div>
               <pre className="export-code">{result.sql}</pre>
@@ -182,7 +189,7 @@ export function QueryBuilderPanel() {
           {/* History */}
           {history.length > 1 && (
             <div className="query-history">
-              <p className="guide-field-group-label">Recent queries</p>
+              <p className="guide-field-group-label">{uiLang === 'en' ? 'Recent queries' : 'آخر الاستعلامات'}</p>
               {history.slice(1).map((item, i) => (
                 <button
                   key={i}

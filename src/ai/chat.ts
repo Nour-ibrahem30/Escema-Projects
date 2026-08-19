@@ -4,6 +4,7 @@
  */
 import { jsonrepair } from 'jsonrepair';
 import { parseAIError } from './errorHandler';
+import { detectLang, type Lang } from './i18n';
 import type { SchemaModel } from '../types';
 
 export type ChatMessage = {
@@ -125,6 +126,8 @@ export async function sendChatMessage(
   schema: SchemaModel,
   preferredModel?: string,
 ): Promise<ChatResponse> {
+  const lang: Lang = detectLang(userMessage);
+
   const messages = [
     { role: 'system', content: CHAT_SYSTEM_PROMPT },
     {
@@ -145,12 +148,13 @@ export async function sendChatMessage(
       response_format:  { type: 'json_object' },
       task_type:        'chat',
       preferred_model:  preferredModel,
+      lang,
     }),
   });
 
   if (!response.ok) {
     const errText = await response.text().catch(() => '');
-    const { message } = parseAIError(errText);
+    const { message } = parseAIError(errText, lang);
     throw new Error(message);
   }
 

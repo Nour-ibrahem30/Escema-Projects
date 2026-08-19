@@ -1,12 +1,16 @@
 /**
- * AI Error Handler — translates server error payloads into Arabic user messages.
+ * AI Error Handler — translates server error payloads into user-facing messages.
  *
  * The proxy (/api/ai-proxy) returns:
  *   { error: string, error_code: string, retry_after_secs: number | null }
  *
- * This module formats them into clear, human-friendly Arabic messages with
- * an optional live countdown if retry_after_secs is present.
+ * The server already localises the error message according to the `lang` field
+ * sent by the frontend, so this module simply forwards it.
+ * The `lang` parameter here is used only for the fallback/catch-path messages.
  */
+import { type Lang, formatRetryTimeLang } from './i18n';
+
+export type { Lang };
 
 export type AIErrorPayload = {
   error?: string;
@@ -14,47 +18,39 @@ export type AIErrorPayload = {
   retry_after_secs?: number | null;
 };
 
-/** Format seconds into a concise Arabic string, e.g. "3 دقائق و20 ثانية" */
+/** @deprecated Use formatRetryTimeLang from i18n instead */
 export function formatRetryTime(secs: number): string {
-  const s = Math.ceil(secs);
-  if (s < 60)   return `${s} ثانية`;
-  if (s < 3600) {
-    const m = Math.floor(s / 60);
-    const rem = s % 60;
-    return rem > 0 ? `${m} دقيقة و${rem} ثانية` : `${m} دقيقة`;
-  }
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  return m > 0 ? `${h} ساعة و${m} دقيقة` : `${h} ساعة`;
+  return formatRetryTimeLang(secs, 'ar');
 }
 
 /**
- * Build the final message shown to the user.
- * Uses the server-side error message directly (already in Arabic) and
- * appends a countdown badge if retry_after_secs is known.
+ * Parse an error response body and return:
+ *  - message        : user-facing localised string
+ *  - retryAfterSecs : seconds until retry, or null
+ *
+ * Pass `lang` so the catch-path fallback message matches the user's language.
  */
-export function buildClientError(payload: AIErrorPayload): string {
-  const base = payload.error ?? 'حدث خطأ غير متوقع. حاول مرة أخرى.';
-
-  // The server already computed the Arabic message including retry time,
-  // so we just return it directly.
-  return base;
-}
-
-/**
- * Parse an error response body (text or already parsed object) and
- * return the user-facing message + optional retry seconds.
- */
-export function parseAIError(raw: string): { message: string; retryAfterSecs: number | null } {
+export function parseAIError(
+  raw: string,
+  lang: Lang = 'ar',
+): { message: string; retryAfterSecs: number | null } {
   try {
     const parsed = JSON.parse(raw) as AIErrorPayload;
+    // The server already built the message in the correct language.
+    const base = parsed.error ?? (
+      lang === 'en'
+        ? 'An unexpected error occurred. Please try again.'
+        : 'حدث خطأ غير متوقع. حاول مرة أخرى.'
+    );
     return {
-      message:        buildClientError(parsed),
+      message:        base,
       retryAfterSecs: parsed.retry_after_secs ?? null,
     };
   } catch {
     return {
-      message:        'حدث خطأ أثناء الاتصال بالذكاء الاصطناعي. حاول مرة أخرى.',
+      message: lang === 'en'
+        ? 'Connection error. Please try again.'
+        : 'حدث خطأ أثناء الاتصال بالذكاء الاصطناعي. حاول مرة أخرى.',
       retryAfterSecs: null,
     };
   }

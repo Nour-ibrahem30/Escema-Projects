@@ -1,6 +1,7 @@
 import { SYSTEM_PROMPT, buildUserPrompt } from './prompt';
 import { isAIAvailable } from './config';
 import { parseAIError } from './errorHandler';
+import { detectLang } from './i18n';
 import { jsonrepair } from 'jsonrepair';
 import type { SchemaModel } from '../types';
 
@@ -58,6 +59,8 @@ export async function generateSchema(
     return;
   }
 
+  const lang = detectLang(userMessage);
+
   try {
     const { ok, data } = await aiRequest({
       messages: [
@@ -68,15 +71,16 @@ export async function generateSchema(
       max_tokens:      4096,
       response_format: { type: 'json_object' },
       task_type:       'schema_generation',
+      lang,
     });
 
     if (!ok) {
-      const { message } = parseAIError(JSON.stringify(data));
+      const { message } = parseAIError(JSON.stringify(data), lang);
       callbacks.onError(message);
       return;
     }
 
-    callbacks.onChunk('Generating schema…');
+    callbacks.onChunk(lang === 'en' ? 'Generating schema…' : 'جاري توليد الـ schema…');
 
     const content = (data as { choices?: Array<{ message: { content: string } }> })
       .choices?.[0]?.message?.content ?? '';
@@ -102,6 +106,7 @@ export async function aiRequest(payload: {
   max_tokens?: number;
   response_format?: { type: string };
   task_type?: string;
+  lang?: 'ar' | 'en';
 }): Promise<{ ok: boolean; status: number; data: unknown }> {
   const res = await fetch('/api/ai-proxy', {
     method: 'POST',
@@ -112,6 +117,7 @@ export async function aiRequest(payload: {
       max_tokens:      payload.max_tokens,
       response_format: payload.response_format,
       task_type:       payload.task_type,
+      lang:            payload.lang,
     }),
   });
   const data = await res.json();
