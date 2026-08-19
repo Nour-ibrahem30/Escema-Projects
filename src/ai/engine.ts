@@ -1,7 +1,6 @@
 import { SYSTEM_PROMPT, buildUserPrompt } from './prompt';
-import {
-  isAIAvailable,
-} from './config';
+import { isAIAvailable } from './config';
+import { parseAIError } from './errorHandler';
 import { jsonrepair } from 'jsonrepair';
 import type { SchemaModel } from '../types';
 
@@ -60,7 +59,7 @@ export async function generateSchema(
   }
 
   try {
-    const { ok, status, data } = await aiRequest({
+    const { ok, data } = await aiRequest({
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user',   content: buildUserPrompt(userMessage, currentSchema) },
@@ -68,10 +67,12 @@ export async function generateSchema(
       temperature:     0.1,
       max_tokens:      4096,
       response_format: { type: 'json_object' },
+      task_type:       'schema_generation',
     });
 
     if (!ok) {
-      callbacks.onError(`API error ${status}: ${JSON.stringify(data)}`);
+      const { message } = parseAIError(JSON.stringify(data));
+      callbacks.onError(message);
       return;
     }
 
@@ -100,6 +101,7 @@ export async function aiRequest(payload: {
   temperature?: number;
   max_tokens?: number;
   response_format?: { type: string };
+  task_type?: string;
 }): Promise<{ ok: boolean; status: number; data: unknown }> {
   const res = await fetch('/api/ai-proxy', {
     method: 'POST',
@@ -109,6 +111,7 @@ export async function aiRequest(payload: {
       temperature:     payload.temperature,
       max_tokens:      payload.max_tokens,
       response_format: payload.response_format,
+      task_type:       payload.task_type,
     }),
   });
   const data = await res.json();

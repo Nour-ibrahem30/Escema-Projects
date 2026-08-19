@@ -1,48 +1,134 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { sendChatMessage, type ChatMessage } from '../ai/chat';
-import { applyPatches } from '../ai/applyPatch';
-import { isAIAvailable } from '../ai/config';
+import { applyPatches, type ApplyPatchResult } from '../ai/applyPatch';
+import { AVAILABLE_MODELS, DEFAULT_MODEL_ID } from '../ai/config';
+import { parseAIError } from '../ai/errorHandler';
 import { useSchemaStore } from '../stores/schemaStore';
+import { useChatStore, type ChatEntry } from '../stores/chatStore';
 
 export function AIChatPanel() {
   const schema = useSchemaStore((s) => s.schema);
   const store  = useSchemaStore();
 
-  const [messages, setMessages] = useState<(ChatMessage & { patches?: number })[]>([]);
-  const [input, setInput]       = useState('');
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState('');
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const hasKey    = isAIAvailable();
+  // ── chatStore wiring ──────────────────────────────────────────
+  const {
+    conversations,
+    activeConversationId,
+    newConversation,
+    selectConversation,
+    deleteConversation,
+    addMessage,
+    getActiveMessages,
+  } = useChatStore();
+
+  // Ensure there is always an active conversation for this schema
+  useEffect(() => {
+    if (!activeConversationId) {
+      newConversation(schema.name);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // When the schema changes (tab switch), start a new conversation if there are none
+  const prevSchemaIdRef = useRef(schema.id);
+  useEffect(() => {
+    if (schema.id !== prevSchemaIdRef.current) {
+      prevSchemaIdRef.current = schema.id;
+      newConversation(schema.name);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schema.id]);
+
+  const messages: ChatEntry[] = getActiveMessages();
+
+  // ── Local UI state ────────────────────────────────────────────
+  const [input, setInput]                   = useState('');
+  const [loading, setLoading]               = useState(false);
+  const [error, setError]                   = useState('');
+  const [retryCountdown, setRetryCountdown] = useState<number | null>(null);
+  const [selectedModel, setSelectedModel]   = useState(DEFAULT_MODEL_ID);
+  const [showModelMenu, setShowModelMenu]   = useState(false);
+  const [showHistory, setShowHistory]       = useState(false);
+
+  const bottomRef      = useRef<HTMLDivElement>(null);
+  const modelMenuRef   = useRef<HTMLDivElement>(null);
+  const countdownRef   = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Live countdown timer
+  const startCountdown = useCallback((secs: number) => {
+    setRetryCountdown(secs);
+    if (countdownRef.current) clearInterval(countdownRef.current);
+    countdownRef.current = setInterval(() => {
+      setRetryCountdown((prev) => {
+        if (prev === null || prev <= 1) {
+          clearInterval(countdownRef.current!);
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
+
+  useEffect(() => () => { if (countdownRef.current) clearInterval(countdownRef.current); }, []);
+
+  // Close model menu on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (!modelMenuRef.current?.contains(e.target as Node)) {
+        setShowModelMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
   const hasEntities = schema.entities.length > 0;
+  const selectedModelLabel = AVAILABLE_MODELS.find((m) => m.id === selectedModel)?.label ?? selectedModel;
 
   const handleSend = async () => {
     const trimmed = input.trim();
-    if (!trimmed || loading || !hasKey) return;
+    if (!trimmed || loading) return;
+
+    // Make sure we have an active conversation
+    let convId = activeConversationId;
+    if (!convId) {
+      convId = newConversation(schema.name);
+    }
+
+    // Save user message immediately
+    const userEntry: ChatEntry = { role: 'user', content: trimmed, ts: Date.now() };
+    addMessage(convId, userEntry);
 
     const history: ChatMessage[] = messages.map((m) => ({ role: m.role, content: m.content }));
 
-    setMessages((prev) => [...prev, { role: 'user', content: trimmed }]);
     setInput('');
     setLoading(true);
     setError('');
 
     try {
-      const result = await sendChatMessage(trimmed, history, schema);
+      const result = await sendChatMessage(trimmed, history, schema, selectedModel);
+      let patchResult: ApplyPatchResult = { applied: 0, failed: 0 };
       if (result.patches.length > 0) {
-        applyPatches(result.patches, store);
+        patchResult = applyPatches(result.patches, store);
       }
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: result.message, patches: result.patches.length },
-      ]);
+      const assistantEntry: ChatEntry = {
+        role:          'assistant',
+        content:       result.message,
+        patches:       patchResult.applied > 0 ? patchResult.applied : undefined,
+        failedPatches: patchResult.failed  > 0 ? patchResult.failed  : undefined,
+        modelUsed:     result.modelUsed,
+        ts:            Date.now(),
+      };
+      addMessage(convId, assistantEntry);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : 'حدث خطأ، حاول مرة أخرى.';
+      const { retryAfterSecs } = parseAIError(JSON.stringify({ error: msg }));
+      setError(msg);
+      if (retryAfterSecs) startCountdown(retryAfterSecs);
     } finally {
       setLoading(false);
     }
@@ -61,15 +147,95 @@ export function AIChatPanel() {
 
   return (
     <div className="chat-panel">
-      {/* Messages */}
+
+      {/* ── Model selector bar ── */}
+      <div className="chat-model-bar" ref={modelMenuRef}>
+        <span className="chat-model-label">الـ Model:</span>
+        <button
+          type="button"
+          className="chat-model-btn"
+          onClick={() => setShowModelMenu((v) => !v)}
+          title="اختر الـ model"
+        >
+          <span className="chat-model-name">{selectedModelLabel}</span>
+          <span className="chat-model-arrow">{showModelMenu ? '▲' : '▼'}</span>
+        </button>
+
+        {showModelMenu && (
+          <div className="chat-model-menu">
+            {AVAILABLE_MODELS.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                className={`chat-model-option${selectedModel === m.id ? ' active' : ''}`}
+                onClick={() => { setSelectedModel(m.id); setShowModelMenu(false); }}
+              >
+                {m.label}
+                {selectedModel === m.id && <span className="chat-model-check">✓</span>}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Conversation history toggle */}
+        <button
+          type="button"
+          className="chat-history-toggle"
+          title="المحادثات المحفوظة"
+          onClick={() => setShowHistory((v) => !v)}
+        >
+          🕐 {conversations.length}
+        </button>
+      </div>
+
+      {/* ── Conversation history drawer ── */}
+      {showHistory && (
+        <div className="chat-history-drawer">
+          <div className="chat-history-header">
+            <span>المحادثات المحفوظة</span>
+            <button type="button" className="btn-icon" onClick={() => {
+              newConversation(schema.name);
+              setShowHistory(false);
+            }}>＋ محادثة جديدة</button>
+          </div>
+          {conversations.length === 0 && (
+            <p className="chat-history-empty">لا توجد محادثات محفوظة</p>
+          )}
+          {conversations.map((conv) => (
+            <div
+              key={conv.id}
+              className={`chat-history-item${conv.id === activeConversationId ? ' active' : ''}`}
+            >
+              <button
+                type="button"
+                className="chat-history-item-btn"
+                onClick={() => { selectConversation(conv.id); setShowHistory(false); }}
+              >
+                <span className="chat-history-title">{conv.title}</span>
+                <span className="chat-history-meta">{conv.messages.length} رسالة</span>
+              </button>
+              <button
+                type="button"
+                className="chat-history-delete btn-icon danger"
+                title="حذف المحادثة"
+                onClick={() => deleteConversation(conv.id)}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Messages ── */}
       <div className="chat-messages">
         {messages.length === 0 && (
           <div className="chat-empty">
             <div className="chat-empty-icon">💬</div>
             <p>
               {hasEntities
-                ? 'Ask me to edit the schema — add entities, fields, relationships, or ask questions about it.'
-                : 'Generate a schema first using the AI bar below, then come back here to chat and modify it.'}
+                ? 'اسألني لتعديل الـ schema — أضف entities أو fields أو علاقات، أو اسألني أي سؤال.'
+                : 'ولّد schema أولاً من شريط الـ AI في الأسفل، ثم ارجع هنا للتعديل.'}
             </p>
             <div className="chat-suggestions">
               {SUGGESTIONS.map((s) => (
@@ -78,7 +244,6 @@ export function AIChatPanel() {
                   type="button"
                   className="chat-suggestion"
                   onClick={() => setInput(s)}
-                  disabled={!hasKey}
                 >
                   {s}
                 </button>
@@ -91,10 +256,24 @@ export function AIChatPanel() {
           <div key={i} className={`chat-message ${msg.role}`}>
             <div className="chat-bubble">
               <span dir="auto">{msg.content}</span>
-              {msg.role === 'assistant' && msg.patches !== undefined && msg.patches > 0 && (
-                <span className="chat-patch-badge">
-                  ✓ {msg.patches} change{msg.patches > 1 ? 's' : ''} applied
-                </span>
+              {msg.role === 'assistant' && (
+                <div className="chat-message-footer">
+                  {msg.patches !== undefined && msg.patches > 0 && (
+                    <span className="chat-patch-badge">
+                      ✓ {msg.patches} تعديل
+                    </span>
+                  )}
+                  {msg.failedPatches !== undefined && msg.failedPatches > 0 && (
+                    <span className="chat-patch-failed" title="بعض التعديلات لم تُطبَّق">
+                      ⚠ {msg.failedPatches} فشل
+                    </span>
+                  )}
+                  {msg.modelUsed && (
+                    <span className="chat-model-used" title="الـ model الذي أجاب">
+                      🤖 {msg.modelUsed.split('/').pop()}
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -103,7 +282,7 @@ export function AIChatPanel() {
         {loading && (
           <div className="chat-message assistant">
             <div className="chat-bubble loading">
-              <span className="spin">⟳</span> Thinking…
+              <span className="spin">⟳</span> جاري التفكير…
             </div>
           </div>
         )}
@@ -111,36 +290,39 @@ export function AIChatPanel() {
         {error && (
           <div className="chat-error">
             <span>✕ {error}</span>
-            <button type="button" onClick={() => setError('')}>Dismiss</button>
+            {retryCountdown !== null && (
+              <span className="chat-error-countdown">
+                ⏱ {retryCountdown}s
+              </span>
+            )}
+            <button type="button" onClick={() => { setError(''); setRetryCountdown(null); }}>تجاهل</button>
           </div>
         )}
 
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
+      {/* ── Input ── */}
       <div className="chat-input-row">
         <input
           type="text"
           className="chat-input"
           placeholder={
-            !hasKey
-              ? 'AI requires configuration (see AI Settings)…'
-              : !hasEntities
-              ? 'Generate a schema first…'
-              : 'Ask me to modify the schema…'
+            !hasEntities
+              ? 'ولّد schema أولاً…'
+              : 'اسألني لتعديل الـ schema…'
           }
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
-          disabled={!hasKey || !hasEntities || loading}
+          disabled={!hasEntities || loading}
           dir="auto"
         />
         <button
           type="button"
           className="send-btn"
           onClick={handleSend}
-          disabled={!hasKey || !hasEntities || !input.trim() || loading}
+          disabled={!hasEntities || !input.trim() || loading}
         >
           {loading ? <span className="spin">⟳</span> : '↵'}
         </button>
@@ -148,8 +330,10 @@ export function AIChatPanel() {
           <button
             type="button"
             className="btn-icon"
-            title="Clear chat"
-            onClick={() => setMessages([])}
+            title="محادثة جديدة"
+            onClick={() => {
+              newConversation(schema.name);
+            }}
           >
             🗑
           </button>

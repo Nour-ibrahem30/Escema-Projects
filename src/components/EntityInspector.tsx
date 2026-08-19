@@ -36,6 +36,7 @@ function EntityInspectorContent({ entity }: { entity: Entity }) {
   const [newFieldType, setNewFieldType] = useState<Field['type']>('string');
   const [newFieldNullable, setNewFieldNullable] = useState(true);
   const [newFieldUnique, setNewFieldUnique] = useState(false);
+  const [newFieldDefault, setNewFieldDefault] = useState('');
 
   const handleRenameSubmit = () => {
     if (nameValue.trim() && nameValue.trim() !== entity.name) {
@@ -55,11 +56,13 @@ function EntityInspectorContent({ entity }: { entity: Entity }) {
     addField(entity.id, newFieldName.trim(), newFieldType, {
       nullable: newFieldNullable,
       unique: newFieldUnique,
+      defaultValue: newFieldDefault.trim() !== '' ? newFieldDefault.trim() : undefined,
     });
     setNewFieldName('');
     setNewFieldType('string');
     setNewFieldNullable(true);
     setNewFieldUnique(false);
+    setNewFieldDefault('');
     setShowAddField(false);
   };
 
@@ -162,6 +165,12 @@ function EntityInspectorContent({ entity }: { entity: Entity }) {
               />
               unique
             </label>
+            <input
+              placeholder="Default value (optional)"
+              value={newFieldDefault}
+              onChange={(e) => setNewFieldDefault(e.target.value)}
+              className="field-default-input"
+            />
             <button type="button" className="btn-primary" onClick={handleAddField}>
               Add
             </button>
@@ -224,9 +233,17 @@ function FieldRow({
   const [type, setType] = useState<Field['type']>(field.type);
   const [nullable, setNullable] = useState(field.nullable);
   const [unique, setUnique] = useState(field.unique);
+  const [defaultVal, setDefaultVal] = useState(
+    field.defaultValue !== undefined && field.defaultValue !== null
+      ? String(field.defaultValue)
+      : ''
+  );
 
   const handleSave = () => {
-    onUpdate({ name, type, nullable, unique });
+    onUpdate({
+      name, type, nullable, unique,
+      defaultValue: defaultVal.trim() !== '' ? defaultVal.trim() : undefined,
+    });
   };
 
   const formatType = (t: Field['type']) =>
@@ -277,6 +294,13 @@ function FieldRow({
             />
             uniq
           </label>
+          <input
+            className="field-inline-input field-default-input"
+            placeholder="default…"
+            value={defaultVal}
+            onChange={(e) => setDefaultVal(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') onStopEdit(); }}
+          />
         </td>
         <td>
           <button type="button" className="btn-icon save" onClick={handleSave}>
@@ -299,6 +323,9 @@ function FieldRow({
         {field.unique && <span className="badge unique">U</span>}
         {field.references && <span className="badge fk">FK</span>}
         {field.nullable && <span className="badge nullable">?</span>}
+        {field.defaultValue !== undefined && field.defaultValue !== null && (
+          <span className="badge default" title={`Default: ${field.defaultValue}`}>D</span>
+        )}
       </td>
       <td>
         <button
@@ -309,16 +336,16 @@ function FieldRow({
         >
           ✎
         </button>
-        {!field.primaryKey && (
-          <button
-            type="button"
-            className="btn-icon danger"
-            title="Delete field"
-            onClick={onDelete}
-          >
-            ✕
-          </button>
-        )}
+        <button
+          type="button"
+          className="btn-icon danger"
+          title={field.primaryKey ? 'المفتاح الأساسي لا يمكن حذفه' : 'Delete field'}
+          onClick={field.primaryKey ? undefined : onDelete}
+          disabled={field.primaryKey}
+          style={field.primaryKey ? { opacity: 0.25, cursor: 'not-allowed' } : undefined}
+        >
+          ✕
+        </button>
       </td>
     </tr>
   );

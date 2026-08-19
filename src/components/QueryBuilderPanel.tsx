@@ -52,10 +52,11 @@ Respond ONLY with a JSON object:
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.1,
-      max_tokens: 1024,
+      messages:        [{ role: 'user', content: prompt }],
+      temperature:     0.1,
+      max_tokens:      1024,
       response_format: { type: 'json_object' },
+      task_type:       'simple',
     }),
   });
 

@@ -46,9 +46,10 @@ Rules:
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      messages: [{ role: 'user', content: prompt }],
+      messages:  [{ role: 'user', content: prompt }],
       temperature: 0.9,
-      max_tokens: 2048,
+      max_tokens:  2048,
+      task_type:   'simple',
     }),
   });
 

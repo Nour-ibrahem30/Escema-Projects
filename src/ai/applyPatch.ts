@@ -28,19 +28,26 @@ function sanitize(t: string): import('../types').Field['type'] {
 // Helper: always read the LATEST schema from the store
 const live = (store: SchemaStore) => store.schema;
 
-export function applyPatches(patches: PatchOp[], store: SchemaStore): void {
-  let appliedCount = 0;
+export type ApplyPatchResult = {
+  applied: number;
+  failed:  number;
+};
+
+export function applyPatches(patches: PatchOp[], store: SchemaStore): ApplyPatchResult {
+  let applied = 0;
+  let failed  = 0;
 
   for (const patch of patches) {
     try {
       applySinglePatch(patch, store);
-      appliedCount++;
+      applied++;
     } catch (err) {
       console.warn('[applyPatch] Failed to apply patch:', patch, err);
+      failed++;
     }
   }
 
-  console.log(`[applyPatch] Applied ${appliedCount}/${patches.length} patches`);
+  return { applied, failed };
 }
 
 function applySinglePatch(patch: PatchOp, store: SchemaStore): void {

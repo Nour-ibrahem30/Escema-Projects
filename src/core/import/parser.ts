@@ -55,7 +55,7 @@ export function importFromSQL(sql: string): SchemaModel {
   const schema = createEmptySchema('Imported from SQL');
   const entityIdByName = new Map<string, string>();
 
-  // Extract CREATE TABLE blocks
+  // ── Pass 1: Extract CREATE TABLE blocks ──────────────────────────────────
   const tableRe = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["']?(\w+)["']?\s*\(([^;]+)\)/gi;
   let tableMatch: RegExpExecArray | null;
 
@@ -113,26 +113,35 @@ export function importFromSQL(sql: string): SchemaModel {
     schema.entities.push(entity);
   }
 
-  // Extract FOREIGN KEY constraints to build relationships
-  const fkRe = /FOREIGN\s+KEY\s*\((\w+)\)\s+REFERENCES\s+["']?(\w+)["']?\s*\((\w+)\)/gi;
-  let fkMatch: RegExpExecArray | null;
-
-  // We need the current table context — re-scan per table
+  // ── Pass 2: Extract FOREIGN KEY constraints with correct source table ──────
+  // Re-scan each CREATE TABLE block so we know which table each FK belongs to.
   const tableBodyRe = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["']?(\w+)["']?\s*\(([^;]+)\)/gi;
-  while ((tableBodyRe.exec(sql)) !== null) {
-    // handled above
-  }
+  const inlineFkRe  = /FOREIGN\s+KEY\s*\(\w+\)\s+REFERENCES\s+["']?(\w+)["']?/gi;
+  let tbMatch: RegExpExecArray | null;
 
-  // Global FK scan
-  while ((fkMatch = fkRe.exec(sql)) !== null) {
-    const [, , refTable] = fkMatch;
-    const srcId = [...entityIdByName.values()][0]; // approximate
-    const tgtId = entityIdByName.get(pascalCase(refTable).toLowerCase());
-    if (srcId && tgtId && srcId !== tgtId) {
-      schema.relationships.push({
-        id: generateId(), sourceEntityId: srcId, targetEntityId: tgtId,
-        type: 'many-to-one',
-      });
+  while ((tbMatch = tableBodyRe.exec(sql)) !== null) {
+    const srcTable = pascalCase(tbMatch[1]);
+    const body     = tbMatch[2];
+    const srcId    = entityIdByName.get(srcTable.toLowerCase());
+    if (!srcId) continue;
+
+    let fkMatch: RegExpExecArray | null;
+    inlineFkRe.lastIndex = 0;                    // reset for each table body
+    while ((fkMatch = inlineFkRe.exec(body)) !== null) {
+      const refTable = fkMatch[1];
+      const tgtId    = entityIdByName.get(pascalCase(refTable).toLowerCase());
+      if (tgtId && tgtId !== srcId) {
+        // Avoid duplicate relationships
+        const alreadyExists = schema.relationships.some(
+          (r) => r.sourceEntityId === srcId && r.targetEntityId === tgtId,
+        );
+        if (!alreadyExists) {
+          schema.relationships.push({
+            id: generateId(), sourceEntityId: srcId, targetEntityId: tgtId,
+            type: 'many-to-one',
+          });
+        }
+      }
     }
   }
 

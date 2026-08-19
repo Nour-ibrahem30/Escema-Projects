@@ -31,6 +31,8 @@ type MultiSchemaState = {
   tabs: SchemaTab[];
   activeTabId: string;
   cloudLoaded: boolean;
+  /** Non-null when the last loadFromCloud call failed */
+  cloudLoadError: string | null;
   /** The userId whose data is currently loaded — used to detect user switches */
   loadedUserId: string | null;
 };
@@ -48,6 +50,7 @@ type MultiSchemaActions = {
   saveTabToCloud: (id: string) => Promise<void>;
   deleteTabFromCloud: (id: string) => Promise<void>;
   clearCloudData: () => void;
+  dismissCloudLoadError: () => void;
   /** Call on logout to wipe all local state and localStorage */
   resetForSignOut: () => void;
 };
@@ -59,13 +62,17 @@ const makeInitialTab = (): SchemaTab => {
   return { id: generateId(), schema, label: 'Schema 1' };
 };
 
+// Build the initial state once so tabs[0].id === activeTabId from the start
+const _initialTab = makeInitialTab();
+
 export const useMultiSchemaStore = create<MultiSchemaStore>()(
   persist(
     (set, get) => ({
-      tabs:        [makeInitialTab()],
-      activeTabId: '',
-      cloudLoaded: false,
-      loadedUserId: null,
+      tabs:           [_initialTab],
+      activeTabId:    _initialTab.id,
+      cloudLoaded:    false,
+      cloudLoadError: null,
+      loadedUserId:   null,
 
       // ── Local tab ops ──────────────────────────────────────────
 
@@ -126,7 +133,7 @@ export const useMultiSchemaStore = create<MultiSchemaStore>()(
         // If data from a different user is loaded, clear it first
         if (get().loadedUserId && get().loadedUserId !== userId) {
           const fresh = makeInitialTab();
-          set({ tabs: [fresh], activeTabId: fresh.id, cloudLoaded: false, loadedUserId: null });
+          set({ tabs: [fresh], activeTabId: fresh.id, cloudLoaded: false, cloudLoadError: null, loadedUserId: null });
         }
 
         try {
@@ -134,7 +141,7 @@ export const useMultiSchemaStore = create<MultiSchemaStore>()(
 
           if (remote.length === 0) {
             // User has no cloud schemas — keep local tabs as-is
-            set({ cloudLoaded: true, loadedUserId: userId });
+            set({ cloudLoaded: true, cloudLoadError: null, loadedUserId: userId });
             return;
           }
 
@@ -150,11 +157,13 @@ export const useMultiSchemaStore = create<MultiSchemaStore>()(
             tabs,
             activeTabId: tabs[0]!.id,
             cloudLoaded: true,
+            cloudLoadError: null,
             loadedUserId: userId,
           });
         } catch (err) {
           console.error('[multiSchemaStore] loadFromCloud failed:', err);
-          set({ cloudLoaded: true, loadedUserId: userId });
+          const msg = err instanceof Error ? err.message : 'فشل تحميل البيانات من السحابة';
+          set({ cloudLoaded: true, cloudLoadError: msg, loadedUserId: userId });
         }
       },
 
@@ -199,8 +208,10 @@ export const useMultiSchemaStore = create<MultiSchemaStore>()(
 
       clearCloudData: () => {
         const fresh = makeInitialTab();
-        set({ tabs: [fresh], activeTabId: fresh.id, cloudLoaded: false });
+        set({ tabs: [fresh], activeTabId: fresh.id, cloudLoaded: false, cloudLoadError: null });
       },
+
+      dismissCloudLoadError: () => set({ cloudLoadError: null }),
 
       resetForSignOut: () => {
         // Wipe localStorage key entirely so next user starts clean
@@ -218,6 +229,7 @@ export const useMultiSchemaStore = create<MultiSchemaStore>()(
         activeTabId:  s.activeTabId,
         cloudLoaded:  s.cloudLoaded,
         loadedUserId: s.loadedUserId,
+        // Don't persist the error — re-evaluate on next load
       }),
     },
   ),

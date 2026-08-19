@@ -6,7 +6,12 @@ import { persist } from 'zustand/middleware';
 import { generateId } from '../utils/id';
 import type { ChatMessage } from '../ai/chat';
 
-export type ChatEntry = ChatMessage & { patches?: number; ts: number };
+export type ChatEntry = ChatMessage & {
+  patches?: number;
+  failedPatches?: number;
+  modelUsed?: string;
+  ts: number;
+};
 
 export type Conversation = {
   id: string;

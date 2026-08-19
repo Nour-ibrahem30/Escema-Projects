@@ -1,7 +1,7 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { generateSchema } from '../ai/engine';
 import { applyAISchema } from '../ai/applySchema';
-import { isAIAvailable } from '../ai/config';
+import { parseAIError } from '../ai/errorHandler';
 import { useSchemaStore } from '../stores/schemaStore';
 import { useSchemaHistoryStore } from '../stores/schemaHistoryStore';
 
@@ -31,21 +31,37 @@ export function AICommandBar({ onSchemaGenerated }: Props) {
   const store = useSchemaStore();
   const addHistoryEntry = useSchemaHistoryStore((s) => s.addEntry);
 
-  const [input, setInput] = useState('');
-  const [status, setStatus] = useState<Status>('idle');
+  const [input, setInput]           = useState('');
+  const [status, setStatus]         = useState<Status>('idle');
   const [streamText, setStreamText] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
-  const [showExamples, setShowExamples] = useState(false);
+  const [errorMsg, setErrorMsg]     = useState('');
+  const [showExamples, setShowExamples]       = useState(false);
+  const [retryCountdown, setRetryCountdown]   = useState<number | null>(null);
 
-  const inputRef = useRef<HTMLInputElement>(null);
-  const streamRef = useRef('');
+  const inputRef     = useRef<HTMLInputElement>(null);
+  const streamRef    = useRef('');
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const hasKey = isAIAvailable();
+  // Live countdown timer
+  const startCountdown = useCallback((secs: number) => {
+    setRetryCountdown(secs);
+    if (countdownRef.current) clearInterval(countdownRef.current);
+    countdownRef.current = setInterval(() => {
+      setRetryCountdown((prev) => {
+        if (prev === null || prev <= 1) {
+          clearInterval(countdownRef.current!);
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
+
+  useEffect(() => () => { if (countdownRef.current) clearInterval(countdownRef.current); }, []);
 
   const handleSubmit = async () => {
     const trimmed = input.trim();
     if (!trimmed || status === 'loading' || status === 'streaming') return;
-    if (!hasKey) return; // no key — bar is disabled
 
     setStatus('loading');
     setStreamText('');
@@ -69,11 +85,15 @@ export function AICommandBar({ onSchemaGenerated }: Props) {
         setTimeout(() => setStatus('idle'), 3000);
       },
       onError: (err) => {
-        setErrorMsg(err === 'NO_API_KEY'
-          ? 'Add VITE_AI_API_KEY to your .env.local file and restart the dev server.'
-          : err,
-        );
+        const msg =
+          err === 'NO_API_KEY' || err === 'AI_NOT_CONFIGURED'
+            ? 'خدمة الذكاء الاصطناعي غير متاحة حالياً. حاول مرة أخرى لاحقاً.'
+            : err;
+        setErrorMsg(msg);
         setStatus('error');
+        // Try to extract retry_after_secs embedded in the message
+        const { retryAfterSecs } = parseAIError(JSON.stringify({ error: msg }));
+        if (retryAfterSecs) startCountdown(retryAfterSecs);
       },
     });
   };
@@ -94,11 +114,11 @@ export function AICommandBar({ onSchemaGenerated }: Props) {
 
   const statusIcon = { idle: '✦', loading: '⟳', streaming: '⟳', done: '✓', error: '✕' }[status];
   const statusTitle = {
-    idle: hasKey ? 'AI ready' : 'No API key — see .env.local',
-    loading: 'Thinking…',
-    streaming: 'Generating…',
-    done: 'Schema built!',
-    error: 'Error',
+    idle:      'AI جاهز',
+    loading:   'جاري المعالجة…',
+    streaming: 'جاري التوليد…',
+    done:      'تم بناء الـ Schema!',
+    error:     'حدث خطأ',
   }[status];
 
   return (
@@ -141,21 +161,13 @@ export function AICommandBar({ onSchemaGenerated }: Props) {
         <div className="command-error">
           <span>✕</span>
           <span>{errorMsg}</span>
-          <button type="button" onClick={() => setStatus('idle')}>Dismiss</button>
+          {retryCountdown !== null && (
+            <span className="chat-error-countdown">⏱ {retryCountdown}s</span>
+          )}
+          <button type="button" onClick={() => { setStatus('idle'); setRetryCountdown(null); }}>تجاهل</button>
         </div>
       )}
 
-      {/* No API key banner */}
-      {!hasKey && (
-        <div className="no-key-banner">
-          <span>⚠</span>
-          <span>
-            AI is not configured. Create a <code>.env.local</code> file with{' '}
-            API key in <code>.env.local</code> (dev) or Vercel (production).
-            See <code>.env.example</code> for details.
-          </span>
-        </div>
-      )}
 
       {/* Main bar */}
       <footer className="command-bar">
@@ -166,9 +178,8 @@ export function AICommandBar({ onSchemaGenerated }: Props) {
         <button
           type="button"
           className="examples-trigger"
-          title="Show examples"
+          title="أمثلة"
           onClick={() => setShowExamples((v) => !v)}
-          disabled={!hasKey}
         >
           ☰
         </button>
@@ -176,16 +187,12 @@ export function AICommandBar({ onSchemaGenerated }: Props) {
         <input
           ref={inputRef}
           type="text"
-          placeholder={
-            hasKey
-              ? 'اكتب طلبك… مثلاً: "ابني schema لمدرسة فيها طلاب ومدرسين"'
-              : 'AI requires configuration. See settings panel.'
-          }
+          placeholder='اكتب طلبك… مثلاً: "ابني schema لمدرسة فيها طلاب ومدرسين"'
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          onFocus={() => hasKey && !input && setShowExamples(true)}
-          disabled={!hasKey || status === 'loading' || status === 'streaming'}
+          onFocus={() => !input && setShowExamples(true)}
+          disabled={status === 'loading' || status === 'streaming'}
           dir="auto"
         />
 
@@ -193,8 +200,8 @@ export function AICommandBar({ onSchemaGenerated }: Props) {
           type="button"
           className="send-btn"
           onClick={handleSubmit}
-          disabled={!hasKey || !input.trim() || status === 'loading' || status === 'streaming'}
-          title="Generate schema (Enter)"
+          disabled={!input.trim() || status === 'loading' || status === 'streaming'}
+          title="توليد الـ Schema (Enter)"
         >
           {status === 'loading' || status === 'streaming'
             ? <span className="spin">⟳</span>

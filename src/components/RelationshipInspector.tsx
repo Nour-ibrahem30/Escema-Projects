@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { Relationship, RelationshipType, SchemaModel } from '../types';
 import { useSchemaStore } from '../stores/schemaStore';
 
@@ -37,6 +37,12 @@ function RelationshipInspectorContent({
 
   const [name, setName] = useState(relationship.name ?? '');
   const [type, setType] = useState<RelationshipType>(relationship.type);
+
+  // Sync state when a different relationship is selected
+  useEffect(() => {
+    setName(relationship.name ?? '');
+    setType(relationship.type);
+  }, [relationship.id]);
 
   const source = schema.entities.find((e) => e.id === relationship.sourceEntityId);
   const target = schema.entities.find((e) => e.id === relationship.targetEntityId);

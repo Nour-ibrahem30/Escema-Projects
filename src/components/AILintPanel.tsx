@@ -69,9 +69,10 @@ Reply message in same language as schema name. Output ONLY the JSON array.`;
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      messages: [{ role: 'user', content: prompt }],
+      messages:    [{ role: 'user', content: prompt }],
       temperature: 0.2,
-      max_tokens: 2048,
+      max_tokens:  2048,
+      task_type:   'analysis',
     }),
   });
 

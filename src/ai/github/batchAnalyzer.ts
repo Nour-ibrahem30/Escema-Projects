@@ -8,9 +8,6 @@
  *   - Graceful partial failure (one bad batch doesn't stop others)
  */
 import { jsonrepair } from 'jsonrepair';
-import {
-  isRateLimitError,
-} from '../config';
 import { aiRequest } from '../engine';
 import type { AISchemaResponse } from '../engine';
 import { TOKEN_CONFIG, splitBatch, type Batch } from './tokenBudget';
@@ -142,7 +139,8 @@ export async function analyzeBatch(
         return { batchId: batch.id, status: schema ? 'success' : 'partial', schema, retriesUsed };
       }
 
-      if (isRateLimitError(status, body)) {
+      // 429 = rate limit, 403 = quota exceeded
+      if (status === 429 || (status === 403 && body.includes('blocked'))) {
         // Rate limited — wait and retry
         const delay = RETRY_DELAYS_MS[Math.min(retriesUsed, RETRY_DELAYS_MS.length - 1)];
         onProgress?.(`Rate limited — waiting ${delay / 1000}s…`);

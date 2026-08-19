@@ -1,10 +1,9 @@
 /**
- * AI Chat — edits the existing schema based on natural language commands.
- * Unlike generateSchema (which replaces the whole schema), chat sends the
- * current schema context and asks the AI to return a PATCH of operations.
+ * AI Chat — edits the existing schema via natural language patch operations.
+ * All requests go through /api/ai-proxy (server handles model selection + fallback).
  */
-import { getEffectiveBaseUrl, getEffectiveModel, resolveProxyUrl } from './config';
 import { jsonrepair } from 'jsonrepair';
+import { parseAIError } from './errorHandler';
 import type { SchemaModel } from '../types';
 
 export type ChatMessage = {
@@ -37,6 +36,8 @@ export type PatchField = {
 export type ChatResponse = {
   message: string;
   patches: PatchOp[];
+  /** Model that actually answered — returned by /api/ai-proxy as _model_used */
+  modelUsed?: string;
 };
 
 const CHAT_SYSTEM_PROMPT = `You are a senior database architect and full-stack engineering assistant embedded inside a visual schema builder tool called SchemaAI.
@@ -84,8 +85,6 @@ Topics you can help with:
 • API design (REST, GraphQL, pagination, filtering)
 • Backend patterns (CQRS, event sourcing, soft delete, audit logs)
 • Code examples in any language
-• Debugging errors or explaining concepts
-• Comparing technologies and recommending the best fit
 
 LANGUAGE RULE:
 - If user writes in Arabic → respond in Arabic
@@ -124,17 +123,8 @@ export async function sendChatMessage(
   userMessage: string,
   history: ChatMessage[],
   schema: SchemaModel,
+  preferredModel?: string,
 ): Promise<ChatResponse> {
-  // Production: route through Edge proxy (keeps key server-side)
-  // Development: route through Vite proxy for Groq/OpenAI/OpenRouter
-  // The API key is never exposed to the frontend.
-
-  const isDev =
-    window.location.hostname === 'localhost' ||
-    window.location.hostname === '127.0.0.1';
-
-  const model = getEffectiveModel();
-
   const messages = [
     { role: 'system', content: CHAT_SYSTEM_PROMPT },
     {
@@ -145,59 +135,42 @@ export async function sendChatMessage(
     { role: 'user', content: userMessage },
   ];
 
-  let response: globalThis.Response;
-
-  if (!isDev) {
-    // Production — route through Edge proxy (keeps key server-side)
-    response = await fetch('/api/ai-proxy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messages,
-        temperature:     0.2,
-        max_tokens:      2048,
-        response_format: { type: 'json_object' },
-      }),
-    });
-  } else {
-    // Development — call AI directly through Vite proxy with localStorage key
-    const apiKey = localStorage.getItem('ai_api_key');
-    if (!apiKey) throw new Error('NO_API_KEY: Add api_api_key in AI Settings for development');
-    
-    const baseUrl = resolveProxyUrl(getEffectiveBaseUrl());
-    response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        stream:          false,
-        temperature:     0.2,
-        max_tokens:      2048,
-        response_format: { type: 'json_object' },
-        messages,
-      }),
-    });
-  }
+  const response = await fetch('/api/ai-proxy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      messages,
+      temperature:      0.2,
+      max_tokens:       2048,
+      response_format:  { type: 'json_object' },
+      task_type:        'chat',
+      preferred_model:  preferredModel,
+    }),
+  });
 
   if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`API error ${response.status}: ${err}`);
+    const errText = await response.text().catch(() => '');
+    const { message } = parseAIError(errText);
+    throw new Error(message);
   }
 
-  const data = await response.json() as { choices: Array<{ message: { content: string } }> };
-  const raw  = data.choices?.[0]?.message?.content ?? '{}';
+  const data = await response.json() as {
+    choices: Array<{ message: { content: string } }>;
+    _model_used?: string;
+  };
+
+  const raw       = data.choices?.[0]?.message?.content ?? '{}';
+  const modelUsed = data._model_used;
 
   try {
-    const fixed = jsonrepair(raw);
+    const fixed  = jsonrepair(raw);
     const parsed = JSON.parse(fixed) as ChatResponse;
     return {
-      message: parsed.message ?? '',
-      patches: Array.isArray(parsed.patches) ? parsed.patches : [],
+      message:   parsed.message ?? '',
+      patches:   Array.isArray(parsed.patches) ? parsed.patches : [],
+      modelUsed,
     };
   } catch {
-    return { message: raw, patches: [] };
+    return { message: raw, patches: [], modelUsed };
   }
 }

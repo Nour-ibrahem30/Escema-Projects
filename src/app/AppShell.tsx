@@ -81,7 +81,8 @@ export function AppShell() {
   const loadSchema             = useSchemaStore((s) => s.loadSchema);
 
   const { user, signOut }           = useAuthStore();
-  const { tabs, activeTabId, saveTabToCloud, updateTabSchema } = useMultiSchemaStore();
+  const { tabs, activeTabId, saveTabToCloud, updateTabSchema,
+          cloudLoadError, dismissCloudLoadError } = useMultiSchemaStore();
   const activeTab = tabs.find((t) => t.id === activeTabId);
 
   // Track previous activeTabId to detect tab switches (not just schema edits)
@@ -144,13 +145,44 @@ export function AppShell() {
   // Apply theme on mount and changes
   useEffect(() => { applyTheme(theme); }, [theme]);
 
+  // ── Global keyboard shortcuts ────────────────────────────────
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore when focus is inside an input/textarea/select/contenteditable
+      const target = e.target as HTMLElement;
+      const isTyping =
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable;
+
+      if (e.ctrlKey && !e.shiftKey && e.key === 'z') {
+        e.preventDefault();
+        undo();
+        return;
+      }
+      if (e.ctrlKey && e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+        e.preventDefault();
+        redo();
+        return;
+      }
+      if (e.key === 'Delete' && !isTyping && selectedEntityId) {
+        e.preventDefault();
+        deleteEntity(selectedEntityId);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo, deleteEntity, selectedEntityId]);
+
   // Load schema from URL if present on first mount
   useEffect(() => {
-    const shared = decodeSchemaFromURL();
-    if (shared) {
-      loadSchema(shared);
-      clearSchemaFromURL();
-    }
+    decodeSchemaFromURL().then((shared) => {
+      if (shared) {
+        loadSchema(shared);
+        clearSchemaFromURL();
+      }
+    }).catch(() => {/* ignore malformed URLs */});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -201,7 +233,7 @@ export function AppShell() {
   };
 
   const handleShare = async () => {
-    const url = encodeSchemaToURL(schema);
+    const url = await encodeSchemaToURL(schema);
     await navigator.clipboard.writeText(url);
     setShareToast('🔗 Link copied to clipboard!');
     setTimeout(() => setShareToast(''), 3000);
@@ -332,6 +364,14 @@ export function AppShell() {
           )}
         </div>
       </header>
+
+      {/* Cloud load error banner */}
+      {cloudLoadError && (
+        <div className="cloud-error-banner" role="alert">
+          <span>☁ فشل تحميل الـ schemas من السحابة — {cloudLoadError}</span>
+          <button type="button" className="cloud-error-dismiss" onClick={dismissCloudLoadError} aria-label="إغلاق">✕</button>
+        </div>
+      )}
 
       {/* Share toast */}
       {shareToast && <div className="share-toast">{shareToast}</div>}
