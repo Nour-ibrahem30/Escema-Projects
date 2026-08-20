@@ -7,7 +7,8 @@ import {
   type GitHubRepo,
 } from '../lib/github.service';
 import { generateSchemaFromRepo, type AnalysisProgress } from '../ai/githubAnalyzer';
-import { useSchemaStore } from '../stores/schemaStore';
+import { useSchemaStore }      from '../stores/schemaStore';
+import { useMultiSchemaStore } from '../stores/multiSchemaStore';
 
 type Props = {
   open: boolean;
@@ -28,7 +29,9 @@ const STAGE_LABELS: Record<string, string> = {
 };
 
 export function GitHubRepoModal({ open, onClose }: Props) {
-  const loadSchema = useSchemaStore((s) => s.loadSchema);
+  const loadSchema      = useSchemaStore((s) => s.loadSchema);
+  const activeTabId     = useMultiSchemaStore((s) => s.activeTabId);
+  const updateTabSchema = useMultiSchemaStore((s) => s.updateTabSchema);
 
   const [step, setStep]               = useState<Step>('repos');
   const [token, setToken]             = useState<string | null>(null);
@@ -98,6 +101,8 @@ export function GitHubRepoModal({ open, onClose }: Props) {
       );
 
       loadSchema(schema);
+      // Sync the generated schema into the active tab so the canvas shows it
+      if (activeTabId) updateTabSchema(activeTabId, schema);
       setStep('done');
       setTimeout(() => onClose(), 2000);
 

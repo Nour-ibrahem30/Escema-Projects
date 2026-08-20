@@ -68,35 +68,44 @@ PRODUCTION SCHEMA RULES
    - List all enums in the top-level "enums" array
 
 5. MANY-TO-MANY — ALWAYS use an explicit junction entity with real metadata
-   - Never use "many-to-many" in relationships array directly
    - Create a junction entity with: id, both FKs, metadata fields, timestamps
    - Example: Student+Course → Enrollment entity with { enrolledAt, grade, status, studentId, courseId }
-   - Use "one-to-many" from each parent to the junction entity
+   - Add "one-to-many" relationships from each parent to the junction entity
+   - Also add "many-to-one" from junction back to each parent
+   - You MUST still list these relationships in the "relationships" array
 
-6. SELF-REFERENCING
+6. RELATIONSHIPS ARRAY — MUST BE COMPLETE
+   - List EVERY relationship between entities in the "relationships" array
+   - For every FK field (e.g. userId on Order), add: { "sourceName": "Order", "targetName": "User", "type": "many-to-one" }
+   - Also add the inverse: { "sourceName": "User", "targetName": "Order", "type": "one-to-many" }
+   - NEVER leave the relationships array empty if entities have FK fields
+   - The diagram canvas reads ONLY from the relationships array to draw connections
+
+7. SELF-REFERENCING
    - For hierarchies (categories, org charts, comments), add: { "name": "parentId", "type": "uuid", "nullable": true }
    - Add relationship: { "sourceName": "Entity", "targetName": "Entity", "type": "one-to-many", "name": "children" }
 
-7. AUDIT & VERSIONING
+8. AUDIT & VERSIONING
    - Add "version" (integer) field on entities that need optimistic locking
    - Add "isActive" (boolean) or "status" enum on entities with lifecycle states
 
-8. NAMING CONVENTIONS
+9. NAMING CONVENTIONS
    - Entity names: PascalCase, singular (User, not Users)
    - Field names: camelCase (firstName, createdAt, userId)
    - No abbreviations (firstName not fname, description not desc)
    - Boolean fields: isActive, isVerified, isDeleted, hasDiscount
 
-9. REALISTIC FIELD COVERAGE
+10. REALISTIC FIELD COVERAGE
    - Users: id, email (unique), passwordHash, firstName, lastName, role, isVerified, isActive, lastLoginAt, createdAt, updatedAt, deletedAt
    - Products: id, name, slug (unique), description, price, compareAtPrice, stock, sku (unique), isActive, categoryId, createdAt, updatedAt
    - Orders: id, orderNumber (unique), status, subtotal, taxAmount, discountAmount, totalAmount, notes, customerId, createdAt, updatedAt
    - Include realistic computed/tracking fields for the domain
 
-10. RELATIONSHIPS COMPLETENESS
-    - Add ALL logical relationships, not just the obvious ones
+11. RELATIONSHIPS COMPLETENESS
+    - Add ALL logical relationships in the "relationships" array
     - Include: User→Address (one-to-many), Order→OrderItem (one-to-many), etc.
-    - Every FK field must have a corresponding relationship entry
+    - Every FK field MUST have a corresponding entry in the relationships array
+    - An empty relationships array is ALWAYS wrong if entities have FK fields
 
 OUTPUT ONLY THE JSON. NOTHING ELSE.
 `;
