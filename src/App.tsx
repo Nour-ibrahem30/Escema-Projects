@@ -4,32 +4,37 @@ import { AuthModal }  from './components/AuthModal';
 import { useAuthStore } from './stores/authStore';
 import { useMultiSchemaStore } from './stores/multiSchemaStore';
 import { useSchemaStore } from './stores/schemaStore';
+import { useChatStore } from './stores/chatStore';
 import './index.css';
 
 function App() {
   const { user, initialized, initialize } = useAuthStore();
   const { loadFromCloud, resetForSignOut: resetMultiSchema, cloudLoaded } = useMultiSchemaStore();
-  const resetSchema = useSchemaStore((s) => s.resetForSignOut);
+  const resetSchema   = useSchemaStore((s) => s.resetForSignOut);
+  const initChatUser  = useChatStore((s) => s.initForUser);
+  const resetChat     = useChatStore((s) => s.resetForSignOut);
 
   // Initialize Supabase auth session on mount
   useEffect(() => {
     initialize();
   }, [initialize]);
 
-  // When user logs in → load their schemas from cloud
+  // When user logs in → load their schemas + init chat isolation
   useEffect(() => {
-    if (user && !cloudLoaded) {
-      loadFromCloud(user.id);
+    if (user) {
+      initChatUser(user.id);
+      if (!cloudLoaded) loadFromCloud(user.id);
     }
-  }, [user, cloudLoaded, loadFromCloud]);
+  }, [user, cloudLoaded, loadFromCloud, initChatUser]);
 
-  // When user logs out → wipe all local state so next user starts clean
+  // When user logs out → wipe ALL local state so next user starts clean
   useEffect(() => {
     if (!user && initialized) {
       resetSchema();
       resetMultiSchema();
+      resetChat();
     }
-  }, [user, initialized, resetSchema, resetMultiSchema]);
+  }, [user, initialized, resetSchema, resetMultiSchema, resetChat]);
 
   // Show nothing while checking session
   if (!initialized) {

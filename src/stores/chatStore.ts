@@ -1,5 +1,6 @@
 /**
  * Chat Store — persists multiple chat conversations in localStorage.
+ * Data is isolated per user — on sign-out all conversations are wiped.
  */
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
@@ -25,6 +26,8 @@ export type Conversation = {
 type ChatStoreState = {
   conversations: Conversation[];
   activeConversationId: string | null;
+  /** userId whose conversations are currently loaded */
+  loadedUserId: string | null;
 };
 
 type ChatStoreActions = {
@@ -35,15 +38,38 @@ type ChatStoreActions = {
   renameConversation: (id: string, title: string) => void;
   clearAll: () => void;
   getActiveMessages: () => ChatEntry[];
+  /** Call on user switch — loads conversations for this user (clears if different user) */
+  initForUser: (userId: string) => void;
+  /** Call on sign-out — wipes localStorage and resets state */
+  resetForSignOut: () => void;
 };
 
 export type ChatStore = ChatStoreState & ChatStoreActions;
+
+const STORAGE_KEY = 'ai-schema-chat-history';
 
 export const useChatStore = create<ChatStore>()(
   persist(
     (set, get) => ({
       conversations: [],
       activeConversationId: null,
+      loadedUserId: null,
+
+      initForUser: (userId) => {
+        // If a different user's data is in memory — clear it
+        if (get().loadedUserId && get().loadedUserId !== userId) {
+          localStorage.removeItem(STORAGE_KEY);
+          set({ conversations: [], activeConversationId: null, loadedUserId: userId });
+        } else {
+          // Same user or first load — just mark the userId
+          set({ loadedUserId: userId });
+        }
+      },
+
+      resetForSignOut: () => {
+        localStorage.removeItem(STORAGE_KEY);
+        set({ conversations: [], activeConversationId: null, loadedUserId: null });
+      },
 
       newConversation: (schemaName) => {
         const id   = generateId();
@@ -83,7 +109,6 @@ export const useChatStore = create<ChatStore>()(
                   ...c,
                   messages: [...c.messages, msg],
                   updatedAt: Date.now(),
-                  // Auto-title from first user message
                   title:
                     c.messages.length === 0 && msg.role === 'user'
                       ? msg.content.slice(0, 40) + (msg.content.length > 40 ? '…' : '')
@@ -110,10 +135,11 @@ export const useChatStore = create<ChatStore>()(
       },
     }),
     {
-      name: 'ai-schema-chat-history',
+      name: STORAGE_KEY,
       partialize: (s) => ({
-        conversations: s.conversations,
+        conversations:        s.conversations,
         activeConversationId: s.activeConversationId,
+        loadedUserId:         s.loadedUserId,
       }),
     },
   ),
