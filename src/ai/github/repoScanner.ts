@@ -192,7 +192,7 @@ export type ScanResult = {
   };
 };
 
-export function scanRepo(files: GitHubFile[], maxSizeBytes = 200_000): ScanResult {
+export function scanRepo(files: GitHubFile[], maxSizeBytes = 400_000): ScanResult {
   const classified: ClassifiedFile[] = [];
   const stats: ScanResult['stats'] = {
     total: files.length, included: 0, ignored: 0, secrets: 0,
@@ -211,11 +211,15 @@ export function scanRepo(files: GitHubFile[], maxSizeBytes = 200_000): ScanResul
     }
     if (file.size > maxSizeBytes) { stats.ignored++; continue; }
 
+    // Use detected language or fall back to 'source' so files aren't silently dropped
+    const detectedLang = getLanguage(file.path);
+    const effectiveLang = detectedLang ?? (cls === 'source' ? 'source' : null);
+
     classified.push({
       ...file,
       classification: cls,
       priority: CLASS_PRIORITY[cls],
-      language: getLanguage(file.path),
+      language: effectiveLang,
       isMasked: cls === 'secret',
     });
 

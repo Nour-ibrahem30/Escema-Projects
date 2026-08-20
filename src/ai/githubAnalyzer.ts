@@ -126,6 +126,14 @@ export async function generateSchemaFromRepo(
     `Found ${stats.included} relevant files (${stats.ignored} ignored, ${stats.secrets} secrets masked)`,
   );
 
+  if (classified.length === 0) {
+    throw new Error(
+      'No relevant source files found in this repository. ' +
+      'Make sure the repo contains source code (.ts, .js, .py, .prisma, .sql, etc.) ' +
+      'and is not only assets or generated files.',
+    );
+  }
+
   // ── Stage 2: Fetch file contents ──────────────────────────────────────────
   progress('scanning', `Reading ${classified.length} files…`, 10);
 
@@ -144,6 +152,7 @@ export async function generateSchemaFromRepo(
   // Parallel fetch (max 5 concurrent)
   progress('cache-lookup', 'Fetching file contents…', 12);
   const FETCH_CONCURRENCY = 5;
+  let fetchFailed = 0;
   for (let i = 0; i < toFetch.length; i += FETCH_CONCURRENCY) {
     const chunk = toFetch.slice(i, i + FETCH_CONCURRENCY);
     const results = await Promise.allSettled(
@@ -157,8 +166,21 @@ export async function generateSchemaFromRepo(
     for (const r of results) {
       if (r.status === 'fulfilled') {
         withContent.push({ ...r.value.file, content: r.value.content });
+      } else {
+        fetchFailed++;
       }
     }
+  }
+
+  if (fetchFailed > 0) {
+    callbacks.onWarning?.(`Failed to fetch ${fetchFailed} file(s) — they will be skipped`);
+  }
+
+  if (withContent.length === 0) {
+    throw new Error(
+      'Could not read any file contents from this repository. ' +
+      'This may be a GitHub rate limit issue — try again in a few minutes.',
+    );
   }
 
   // ── Stage 3: Cache lookup ─────────────────────────────────────────────────
@@ -239,7 +261,12 @@ export async function generateSchemaFromRepo(
 
   const failedCount = batchResults.filter((r) => r.status === 'failed').length;
   if (failedCount > 0) {
-    callbacks.onWarning?.(`${failedCount}/${batchResults.length} batch(es) failed — schema may be partial`);
+    const errors = batchResults
+      .filter((r) => r.status === 'failed' && r.error)
+      .map((r) => r.error)
+      .slice(0, 3)
+      .join(' | ');
+    callbacks.onWarning?.(`${failedCount}/${batchResults.length} batch(es) failed — schema may be partial. Errors: ${errors}`);
   }
 
   // ── Stage 7: Merge all results ────────────────────────────────────────────
@@ -259,6 +286,22 @@ export async function generateSchemaFromRepo(
 
   // ── Stage 8: Build SchemaModel ────────────────────────────────────────────
   progress('building', 'Building final schema…', 90);
+
+  if (merged.entities.length === 0) {
+    // Give a helpful error instead of silently returning an empty schema
+    const allFailed = batchResults.every((r) => r.status === 'failed');
+    if (allFailed && batchResults.length > 0) {
+      throw new Error(
+        'AI analysis failed for all file batches. ' +
+        'This is likely an API rate limit or model error. Try again in a few minutes.',
+      );
+    }
+    throw new Error(
+      'No database entities were found in this repository. ' +
+      'The AI could not identify any models, tables, or entities from the source code. ' +
+      'Try a repo that contains Prisma schemas, SQL migrations, ORM models, or clear data models.',
+    );
+  }
 
   const store = buildFakeStore();
   applyAISchema(merged, store as never);

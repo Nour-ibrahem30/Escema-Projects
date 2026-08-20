@@ -294,9 +294,12 @@ export function runStaticAnalysis(
       }
     }
 
-    // Everything else needs AI analysis
+    // Everything else needs AI analysis — include even if language is unknown
     if (file.language) {
       remaining.push({ path: file.path, content: file.content, language: file.language });
+    } else {
+      // Unknown language — still send to AI with a generic label
+      remaining.push({ path: file.path, content: file.content, language: 'source' });
     }
   }
 

@@ -105,12 +105,28 @@ async function callAI(
 
 // ─── Parse AI response ────────────────────────────────────────────────────────
 
+function extractContent(raw: string): string {
+  let text = raw.trim();
+  // Strip <think>...</think> blocks (qwen, gpt-oss models)
+  text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  // Strip markdown fences
+  text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+  // Extract outermost { ... }
+  const start = text.indexOf('{');
+  const end   = text.lastIndexOf('}');
+  if (start !== -1 && end > start) return text.slice(start, end + 1);
+  return text;
+}
+
 function parseResponse(body: string): AISchemaResponse | null {
   try {
     const data = JSON.parse(body) as { choices?: Array<{ message: { content: string } }> };
-    const raw  = data.choices?.[0]?.message?.content ?? '{}';
-    const fixed = jsonrepair(raw);
-    const obj   = JSON.parse(fixed) as AISchemaResponse;
+    const raw  = data.choices?.[0]?.message?.content ?? '';
+    if (!raw) return null;
+
+    const extracted = extractContent(raw);
+    const fixed     = jsonrepair(extracted);
+    const obj       = JSON.parse(fixed) as AISchemaResponse;
     if (!Array.isArray(obj.entities)) return null;
     return obj;
   } catch {
@@ -136,7 +152,11 @@ export async function analyzeBatch(
 
       if (ok) {
         const schema = parseResponse(body);
-        return { batchId: batch.id, status: schema ? 'success' : 'partial', schema, retriesUsed };
+        if (schema) {
+          return { batchId: batch.id, status: 'success', schema, retriesUsed };
+        }
+        // AI responded but JSON was unparseable — treat as failed so warning shows
+        return { batchId: batch.id, status: 'failed', schema: null, error: 'Could not parse AI response as JSON', retriesUsed };
       }
 
       // 429 = rate limit, 403 = quota exceeded
