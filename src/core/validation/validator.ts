@@ -253,33 +253,42 @@ function validateRelationships(schema: SchemaModel): ValidationIssue[] {
 
 function detectCircularDependencies(schema: SchemaModel): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
+
+  // Build directed graph from RELATIONSHIPS ONLY — not FK fields.
+  // FK fields are legitimate back-references and should never trigger circular warnings.
+  // A real circular dependency only exists when Entity A "owns" Entity B which "owns" A
+  // through explicit relationship definitions.
   const graph = new Map<string, Set<string>>();
 
   for (const entity of schema.entities) {
     graph.set(entity.id, new Set());
   }
 
-  for (const entity of schema.entities) {
-    for (const field of entity.fields) {
-      if (field.references?.entityId && field.references.entityId !== entity.id) {
-        graph.get(entity.id)?.add(field.references.entityId);
-      }
-    }
-  }
-
   for (const relationship of schema.relationships) {
-    if (relationship.sourceEntityId !== relationship.targetEntityId) {
-      graph.get(relationship.sourceEntityId)?.add(relationship.targetEntityId);
-    }
+    // Skip self-relationships — they're intentional
+    if (relationship.sourceEntityId === relationship.targetEntityId) continue;
+    // Only add one-to-one and one-to-many as directed ownership edges.
+    // many-to-many through a junction is never a circular dependency.
+    if (relationship.type === 'many-to-many') continue;
+    graph.get(relationship.sourceEntityId)?.add(relationship.targetEntityId);
   }
 
+  // Track seen cycles to avoid duplicate reports
+  const reportedCycles = new Set<string>();
   const visited = new Set<string>();
   const stack = new Set<string>();
 
-  function dfs(nodeId: string, path: string[]): boolean {
+  function dfs(nodeId: string, path: string[]): void {
     if (stack.has(nodeId)) {
       const cycleStart = path.indexOf(nodeId);
-      const cycle = path.slice(cycleStart).map((id) => getEntity(schema, id)?.name ?? id);
+      if (cycleStart === -1) return;
+      const cycleIds = path.slice(cycleStart);
+      // Normalise cycle key so A→B→A and B→A→B are the same
+      const cycleKey = [...cycleIds].sort().join(':');
+      if (reportedCycles.has(cycleKey)) return;
+      reportedCycles.add(cycleKey);
+
+      const cycle = cycleIds.map((id) => getEntity(schema, id)?.name ?? id);
       issues.push(
         issue(
           'circular_dependency',
@@ -287,12 +296,10 @@ function detectCircularDependencies(schema: SchemaModel): ValidationIssue[] {
           `Potential circular dependency detected: ${cycle.join(' → ')} → ${getEntity(schema, nodeId)?.name ?? nodeId}`,
         ),
       );
-      return true;
+      return;
     }
 
-    if (visited.has(nodeId)) {
-      return false;
-    }
+    if (visited.has(nodeId)) return;
 
     visited.add(nodeId);
     stack.add(nodeId);
@@ -302,7 +309,6 @@ function detectCircularDependencies(schema: SchemaModel): ValidationIssue[] {
     }
 
     stack.delete(nodeId);
-    return false;
   }
 
   for (const entityId of graph.keys()) {

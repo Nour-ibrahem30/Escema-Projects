@@ -56,12 +56,14 @@ export const useChatStore = create<ChatStore>()(
       loadedUserId: null,
 
       initForUser: (userId) => {
-        // If a different user's data is in memory — clear it
-        if (get().loadedUserId && get().loadedUserId !== userId) {
+        const state = get();
+        // Only wipe if a DIFFERENT user's data is loaded
+        // If loadedUserId is null (first load / old data), just stamp the userId — don't wipe
+        if (state.loadedUserId && state.loadedUserId !== userId) {
           localStorage.removeItem(STORAGE_KEY);
           set({ conversations: [], activeConversationId: null, loadedUserId: userId });
         } else {
-          // Same user or first load — just mark the userId
+          // Same user or migrating from old format — keep conversations, just set userId
           set({ loadedUserId: userId });
         }
       },

@@ -69,6 +69,28 @@ PATCH OPERATIONS (use when user asks to modify the schema):
 - { "op": "rename_schema", "name": "NewSchemaName" }
 
 ══════════════════════════════════════════
+RELATIONSHIP RULES — ALWAYS FOLLOW:
+
+When adding entities, you MUST also add all logical relationships between them.
+NEVER add entities without adding their relationships in the same response.
+
+Examples:
+- User has many Orders → add_relationship: User → Order (one-to-many)
+- Order belongs to User → add_relationship: Order → User (many-to-one)  
+- User has one Profile → add_relationship: User → Profile (one-to-one)
+- Student takes many Courses → add_relationship: Student → Course (many-to-many)
+
+FK FIELD RULES:
+- For one-to-many: add a UUID FK field on the "many" side (e.g. Order gets "userId" field)
+- For many-to-many: use add_relationship with type "many-to-many" (junction table is auto-created)
+- For one-to-one: add FK on the dependent entity
+
+ALWAYS include relationships when:
+1. Adding multiple entities that are logically related
+2. The user describes a domain (hotel, school, e-commerce, etc.)
+3. Modifying existing schema to add features
+
+══════════════════════════════════════════
 GENERAL ASSISTANT RULES:
 
 When the user asks a QUESTION (not a schema command):
@@ -93,6 +115,30 @@ LANGUAGE RULE:
 - Always match the user's language exactly
 
 OUTPUT: ONLY the JSON object. Nothing else.`;
+
+/**
+ * Extracts a JSON object from a raw model response.
+ * Handles: plain JSON, markdown fences, <think> tags, prose wrapping.
+ */
+function extractJSON(raw: string): string {
+  let text = raw.trim();
+
+  // 1. Strip <think>...</think> blocks (some models like qwen output these)
+  text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
+  // 2. Strip markdown code fences ```json ... ``` or ``` ... ```
+  text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+
+  // 3. Find the outermost { ... } JSON object
+  const start = text.indexOf('{');
+  const end   = text.lastIndexOf('}');
+  if (start !== -1 && end !== -1 && end > start) {
+    return text.slice(start, end + 1);
+  }
+
+  // 4. No JSON found — return as-is (jsonrepair will handle it or fail gracefully)
+  return text;
+}
 
 function schemaToContext(schema: SchemaModel): string {
   const entities = schema.entities.map((e) => {
@@ -166,15 +212,19 @@ export async function sendChatMessage(
   const raw       = data.choices?.[0]?.message?.content ?? '{}';
   const modelUsed = data._model_used;
 
+  // Robust JSON extraction — handles markdown fences, prose wrapping, thinking tags
+  const extracted = extractJSON(raw);
+
   try {
-    const fixed  = jsonrepair(raw);
+    const fixed  = jsonrepair(extracted);
     const parsed = JSON.parse(fixed) as ChatResponse;
     return {
-      message:   parsed.message ?? '',
+      message:   parsed.message ?? raw,
       patches:   Array.isArray(parsed.patches) ? parsed.patches : [],
       modelUsed,
     };
   } catch {
+    // If still can't parse — return raw text as message with no patches
     return { message: raw, patches: [], modelUsed };
   }
 }

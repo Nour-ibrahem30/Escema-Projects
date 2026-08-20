@@ -129,8 +129,11 @@ export async function aiRequest(payload: {
 function parseAIResponse(raw: string): AISchemaResponse | null {
   let text = raw.trim();
 
-  // Strip markdown fences if model added them
-  text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  // Strip <think>...</think> blocks (qwen and similar models)
+  text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
+  // Strip markdown fences
+  text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
 
   // Extract outermost { ... } block
   const start = text.indexOf('{');
