@@ -261,6 +261,20 @@ function getChainForTask(
   ];
 }
 
+// Models that do NOT support response_format: { type: 'json_object' }
+// For these we rely on prompt engineering + jsonrepair on the client side
+const NO_JSON_MODE = new Set([
+  'openai/gpt-oss-120b',
+  'openai/gpt-oss-20b',
+  'openai/gpt-oss-safeguard-20b',
+  'groq/compound',
+  'groq/compound-mini',
+  'canopylabs/orpheus-arabic-saudi',
+  'canopylabs/orpheus-v1-english',
+  'meta-llama/llama-prompt-guard-2-22m',
+  'meta-llama/llama-prompt-guard-2-86m',
+]);
+
 // ─── CORS helpers ─────────────────────────────────────────────────────────────
 
 function corsHeaders(origin: string | null) {
@@ -346,16 +360,22 @@ export default async function handler(req: Request): Promise<Response> {
           messages:        body.messages,
           temperature:     body.temperature     ?? 0.1,
           max_tokens:      body.max_tokens      ?? 4096,
-          response_format: body.response_format,
+          // Only pass response_format if the model supports json_object mode
+          response_format: body.response_format && !NO_JSON_MODE.has(model)
+            ? body.response_format
+            : undefined,
           stream:          false,
         }),
       });
 
       const data = await upstream.json() as Record<string, unknown>;
 
-      // Rate limit / quota / model not found → try next model
+      // Rate limit / quota / model not found / bad request for this model → try next
       if (
-        (upstream.status === 429 || upstream.status === 403 || upstream.status === 404) &&
+        (upstream.status === 429 ||
+         upstream.status === 403 ||
+         upstream.status === 404 ||
+         upstream.status === 400) &&
         i < chain.length - 1
       ) {
         continue;
