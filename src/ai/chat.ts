@@ -117,27 +117,19 @@ LANGUAGE RULE:
 OUTPUT: ONLY the JSON object. Nothing else.`;
 
 /**
- * Extracts a JSON object from a raw model response.
- * Handles: plain JSON, markdown fences, <think> tags, prose wrapping.
+ * Extracts a JSON object from model output.
+ * Caller should already have stripped <think> blocks.
+ * Handles markdown fences and prose wrapping.
  */
-function extractJSON(raw: string): string {
-  let text = raw.trim();
-
-  // 1. Strip <think>...</think> blocks (some models like qwen output these)
-  text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-
-  // 2. Strip markdown code fences ```json ... ``` or ``` ... ```
-  text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
-
-  // 3. Find the outermost { ... } JSON object
-  const start = text.indexOf('{');
-  const end   = text.lastIndexOf('}');
-  if (start !== -1 && end !== -1 && end > start) {
-    return text.slice(start, end + 1);
-  }
-
-  // 4. No JSON found — return as-is (jsonrepair will handle it or fail gracefully)
-  return text;
+function extractJSON(text: string): string {
+  let t = text.trim();
+  // Strip markdown code fences
+  t = t.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+  // Find outermost { ... }
+  const start = t.indexOf('{');
+  const end   = t.lastIndexOf('}');
+  if (start !== -1 && end > start) return t.slice(start, end + 1);
+  return t;
 }
 
 function schemaToContext(schema: SchemaModel): string {
@@ -212,19 +204,23 @@ export async function sendChatMessage(
   const raw       = data.choices?.[0]?.message?.content ?? '{}';
   const modelUsed = data._model_used;
 
-  // Robust JSON extraction — handles markdown fences, prose wrapping, thinking tags
-  const extracted = extractJSON(raw);
+  // Strip <think> blocks first — preserve the rest for fallback display
+  const withoutThink = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
+  // Try to extract and parse the JSON object
+  const extracted = extractJSON(withoutThink);
 
   try {
     const fixed  = jsonrepair(extracted);
     const parsed = JSON.parse(fixed) as ChatResponse;
     return {
-      message:   parsed.message ?? raw,
+      // Use parsed.message if available, otherwise show the non-think content
+      message:   parsed.message?.trim() || withoutThink || raw,
       patches:   Array.isArray(parsed.patches) ? parsed.patches : [],
       modelUsed,
     };
   } catch {
-    // If still can't parse — return raw text as message with no patches
-    return { message: raw, patches: [], modelUsed };
+    // JSON parse failed — return whatever text the model produced (minus think blocks)
+    return { message: withoutThink || raw, patches: [], modelUsed };
   }
 }
