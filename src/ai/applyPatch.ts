@@ -5,6 +5,7 @@
  */
 import type { PatchOp } from './chat';
 import type { SchemaStore } from '../stores/schemaStore';
+import { logger } from '../utils/logger';
 
 const VALID_TYPES = new Set([
   'string','text','integer','float','decimal',
@@ -42,7 +43,7 @@ export function applyPatches(patches: PatchOp[], store: SchemaStore): ApplyPatch
       applySinglePatch(patch, store);
       applied++;
     } catch (err) {
-      console.warn('[applyPatch] Failed to apply patch:', patch, err);
+      logger.warn('[applyPatch] Failed to apply patch:', patch, err);
       failed++;
     }
   }
@@ -103,7 +104,7 @@ function applySinglePatch(patch: PatchOp, store: SchemaStore): void {
         (e) => e.name.toLowerCase() === patch.entity.toLowerCase(),
       );
       if (!entity) {
-        console.warn(`[applyPatch] add_field: entity "${patch.entity}" not found`);
+        logger.warn(`[applyPatch] add_field: entity "${patch.entity}" not found`);
         break;
       }
       // Skip if field already exists
@@ -158,7 +159,7 @@ function applySinglePatch(patch: PatchOp, store: SchemaStore): void {
       const src = s.entities.find((e) => e.name.toLowerCase() === patch.sourceName.toLowerCase());
       const tgt = s.entities.find((e) => e.name.toLowerCase() === patch.targetName.toLowerCase());
       if (!src || !tgt) {
-        console.warn(`[applyPatch] add_relationship: entity not found "${patch.sourceName}" or "${patch.targetName}"`);
+        logger.warn(`[applyPatch] add_relationship: entity not found "${patch.sourceName}" or "${patch.targetName}"`);
         break;
       }
       const type = patch.type as import('../types').RelationshipType;

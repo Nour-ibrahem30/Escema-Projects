@@ -275,13 +275,31 @@ const NO_JSON_MODE = new Set([
   'meta-llama/llama-prompt-guard-2-86m',
 ]);
 
-// ─── CORS helpers ─────────────────────────────────────────────────────────────
+// ─── Allowed origins (CORS) ───────────────────────────────────────────────────
 
-function corsHeaders(origin: string | null) {
+const ALLOWED_ORIGINS = new Set([
+  'https://escema-projects.vercel.app',
+  // Allow all *.vercel.app preview deployments for this project
+]);
+
+function isAllowedOrigin(origin: string | null): boolean {
+  if (!origin) return false;
+  if (ALLOWED_ORIGINS.has(origin)) return true;
+  // Allow Vercel preview deployments: escema-projects-*.vercel.app
+  if (/^https:\/\/escema-projects-[^.]+\.vercel\.app$/.test(origin)) return true;
+  // Allow localhost in development
+  if (/^https?:\/\/localhost(:\d+)?$/.test(origin)) return true;
+  return false;
+}
+
+function corsHeaders(origin: string | null): Record<string, string> {
+  // Only reflect the origin if it's in the allowlist
+  const allowedOrigin = isAllowedOrigin(origin) ? origin! : 'https://escema-projects.vercel.app';
   return {
-    'Access-Control-Allow-Origin':  origin ?? '*',
+    'Access-Control-Allow-Origin':  allowedOrigin,
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
+    'Vary': 'Origin',
   };
 }
 

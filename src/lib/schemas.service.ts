@@ -27,11 +27,14 @@ export async function fetchSchemas(): Promise<RemoteSchema[]> {
 
 // ─── Save (upsert) a schema ───────────────────────────────────
 
-export async function saveSchema(schema: SchemaModel, remoteId?: string): Promise<RemoteSchema> {
+export async function saveSchema(
+  schema: SchemaModel,
+  remoteId?: string,
+): Promise<RemoteSchema> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
 
-  // Build payload — omit id if undefined so Supabase auto-generates it
+  // Build a plain object — Supabase upsert expects a plain record
   const payload: Record<string, unknown> = {
     user_id:     user.id,
     name:        schema.name,
@@ -40,13 +43,14 @@ export async function saveSchema(schema: SchemaModel, remoteId?: string): Promis
     updated_at:  new Date().toISOString(),
   };
 
+  // Only include id when updating an existing record
   if (remoteId) payload['id'] = remoteId;
 
   const { data, error } = await supabase
     .from('schemas')
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .upsert(payload as any, { onConflict: 'id' })
-    .select()
+    .select('id, name, description, data, created_at, updated_at')
     .single();
 
   if (error) throw new Error(error.message);

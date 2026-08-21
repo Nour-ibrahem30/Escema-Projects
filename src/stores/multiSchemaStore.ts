@@ -11,6 +11,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import type { SchemaModel } from '../types';
 import { createEmptySchema } from '../core/schema/factory';
 import { generateId } from '../utils/id';
+import { logger } from '../utils/logger';
 import {
   fetchSchemas,
   saveSchema,
@@ -161,7 +162,7 @@ export const useMultiSchemaStore = create<MultiSchemaStore>()(
             loadedUserId: userId,
           });
         } catch (err) {
-          console.error('[multiSchemaStore] loadFromCloud failed:', err);
+          logger.error('[multiSchemaStore] loadFromCloud failed:', err);
           const msg = err instanceof Error ? err.message : 'فشل تحميل البيانات من السحابة';
           set({ cloudLoaded: true, cloudLoadError: msg, loadedUserId: userId });
         }
@@ -186,7 +187,7 @@ export const useMultiSchemaStore = create<MultiSchemaStore>()(
             ),
           }));
         } catch (err) {
-          console.error('[multiSchemaStore] saveTabToCloud failed:', err);
+          logger.error('[multiSchemaStore] saveTabToCloud failed:', err);
           set((s) => ({
             tabs: s.tabs.map((t) => t.id === id ? { ...t, isSaving: false } : t),
           }));
@@ -200,7 +201,7 @@ export const useMultiSchemaStore = create<MultiSchemaStore>()(
           try {
             await deleteSchemaRemote(tab.remoteId);
           } catch (err) {
-            console.error('[multiSchemaStore] deleteTabFromCloud failed:', err);
+            logger.error('[multiSchemaStore] deleteTabFromCloud failed:', err);
           }
         }
         get().closeTab(id);
