@@ -3,7 +3,7 @@
   "outputDirectory": "dist",
   "functions": {
     "api/ai-proxy.ts": {
-      "maxDuration": 60
+      "maxDuration": 300
     }
   },
   "rewrites": [

@@ -68,7 +68,7 @@ export async function generateSchema(
         { role: 'user',   content: buildUserPrompt(userMessage, currentSchema) },
       ],
       temperature:     0.1,
-      max_tokens:      4096,
+      max_tokens:      32000, // Maximum flexibility for very large schemas (100+ entities)
       response_format: { type: 'json_object' },
       task_type:       'schema_generation',
       lang,

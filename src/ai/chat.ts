@@ -133,29 +133,7 @@ function extractJSON(text: string): string {
 }
 
 function schemaToContext(schema: SchemaModel): string {
-  // For large schemas, send a condensed summary instead of full details
-  const entityCount = schema.entities.length;
-  const relationshipCount = schema.relationships.length;
-  const enumCount = schema.enums.length;
-  
-  // If schema is large (>10 entities), use condensed format
-  if (entityCount > 10) {
-    const entityNames = schema.entities.map((e) => e.name).join(', ');
-    const relSummary = schema.relationships.map((r) => {
-      const src = schema.entities.find((e) => e.id === r.sourceEntityId)?.name ?? '?';
-      const tgt = schema.entities.find((e) => e.id === r.targetEntityId)?.name ?? '?';
-      return `${src}→${tgt}(${r.type})`;
-    }).join('; ');
-    
-    return [
-      `Schema: "${schema.name}"`,
-      `${entityCount} entities: ${entityNames}`,
-      relationshipCount > 0 ? `${relationshipCount} relationships: ${relSummary}` : '',
-      enumCount > 0 ? `${enumCount} enums` : '',
-    ].filter(Boolean).join('\n');
-  }
-
-  // For smaller schemas, keep detailed format
+  // Always send full detailed format — no condensing
   const entities = schema.entities.map((e) => {
     const fields = e.fields.map((f) =>
       `    - ${f.name}: ${typeof f.type === 'object' ? 'enum' : f.type}${f.primaryKey ? ' [PK]' : ''}${f.unique ? ' [UNIQUE]' : ''}${f.nullable ? '' : ' [NOT NULL]'}`,
@@ -189,16 +167,14 @@ export async function sendChatMessage(
 ): Promise<ChatResponse> {
   const lang: Lang = detectLang(userMessage);
 
-  // Limit history to last 5 messages to prevent payload bloat
-  const recentHistory = history.slice(-5);
-
+  // Keep full history — no artificial limits
   const messages = [
     { role: 'system', content: CHAT_SYSTEM_PROMPT },
     {
       role: 'user',
       content: `Current schema context:\n${schemaToContext(schema)}`,
     },
-    ...recentHistory.map((m) => ({ role: m.role, content: m.content })),
+    ...history.map((m) => ({ role: m.role, content: m.content })),
     { role: 'user', content: userMessage },
   ];
 
@@ -209,12 +185,12 @@ export async function sendChatMessage(
   // For large requests (complex schema operations), use more output tokens
   // and route to the strongest model via task_type
   const isLargeRequest = inputTokens > 2000 || userMessage.length > 800;
-  const maxTokens  = isLargeRequest ? 8192 : 2048;
+  const maxTokens  = isLargeRequest ? 16000 : 8000; // Generous limits for all scenarios
   const taskType   = isLargeRequest ? 'schema_generation' : 'chat';
 
-  // Abort controller for timeout
+  // Abort controller for timeout — increased to 90s for very large operations
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 55000); // 55s timeout
+  const timeoutId = setTimeout(() => controller.abort(), 90000);
 
   try {
     const response = await fetch('/api/ai-proxy', {

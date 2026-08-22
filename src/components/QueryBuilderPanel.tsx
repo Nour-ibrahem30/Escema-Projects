@@ -55,7 +55,7 @@ Respond ONLY with a JSON object:
     body: JSON.stringify({
       messages:        [{ role: 'user', content: prompt }],
       temperature:     0.1,
-      max_tokens:      1024,
+      max_tokens:      4000, // Generous limit for complex SQL queries
       response_format: { type: 'json_object' },
       task_type:       'simple',
       lang,

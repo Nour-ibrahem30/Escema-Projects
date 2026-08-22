@@ -99,15 +99,7 @@ export function AIChatPanel() {
     const lang = detectLang(trimmed);
     setUiLang(lang);
 
-    // Reject very large messages — they should use the AI bar instead
-    if (trimmed.length > 1200) {
-      setError(
-        lang === 'en'
-          ? 'Message too long. For large schema changes, use the AI bar at the bottom of the canvas.'
-          : 'الرسالة طويلة جداً. للتعديلات الكبيرة، استخدم شريط الـ AI في أسفل الـ canvas.'
-      );
-      return;
-    }
+    // No length restriction — users can send large messages
 
     // Make sure we have an active conversation
     let convId = activeConversationId;
@@ -363,17 +355,12 @@ export function AIChatPanel() {
             disabled={!hasEntities || loading}
             dir="auto"
           />
-          {input.length > 800 && (
-            <span className={`chat-char-count${input.length > 1200 ? ' chat-char-count--warn' : ''}`}>
-              {input.length}/1200
-            </span>
-          )}
         </div>
         <button
           type="button"
           className="send-btn"
           onClick={handleSend}
-          disabled={!hasEntities || !input.trim() || loading || input.length > 1200}
+          disabled={!hasEntities || !input.trim() || loading}
         >
           {loading ? <span className="spin">⟳</span> : '↵'}
         </button>

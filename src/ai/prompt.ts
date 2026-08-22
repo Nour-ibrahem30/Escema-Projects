@@ -121,13 +121,16 @@ export function buildUserPrompt(
 "${userMessage}"
 
 Requirements:
-- Include ALL entities needed for this domain
-- Add realistic fields (not just id + name)
+- Include ALL entities needed for this domain — think comprehensively
+- If the user asks for a "large" or "enterprise" schema, generate 30-50+ entities
+- Add realistic fields (not just id + name) — at least 8-12 fields per entity
 - Use enums for status fields
 - Add junction tables for many-to-many with metadata
 - Include timestamps on every entity
 - Add FK fields explicitly
-- Think about what a real senior backend engineer would design`;
+- Think about what a real senior backend engineer would design for a production system
+
+IMPORTANT: Do not stop early. Generate the FULL schema with ALL requested entities, relationships, and enums.`;
 
   if (hasEntities) {
     const summary = currentSchema.entities

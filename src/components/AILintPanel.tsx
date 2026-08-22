@@ -71,7 +71,7 @@ IMPORTANT: Reply in ${replyLang}. Output ONLY the JSON array.`;
     body: JSON.stringify({
       messages:    [{ role: 'user', content: prompt }],
       temperature: 0.2,
-      max_tokens:  2048,
+      max_tokens:  8000, // Generous limit for comprehensive schema analysis
       task_type:   'analysis',
       lang,
     }),

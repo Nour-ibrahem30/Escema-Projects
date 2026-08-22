@@ -48,7 +48,7 @@ Rules:
     body: JSON.stringify({
       messages:    [{ role: 'user', content: prompt }],
       temperature: 0.9,
-      max_tokens:  2048,
+      max_tokens:  8000, // Generous limit for seed data generation
       task_type:   'simple',
       lang,
     }),
