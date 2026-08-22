@@ -176,15 +176,25 @@ export async function sendChatMessage(
     { role: 'user', content: userMessage },
   ];
 
+  // Estimate total input tokens (~4 chars per token) to decide output budget
+  const inputChars  = messages.reduce((sum, m) => sum + m.content.length, 0);
+  const inputTokens = Math.ceil(inputChars / 4);
+
+  // For large requests (complex schema operations), use more output tokens
+  // and route to the strongest model via task_type
+  const isLargeRequest = inputTokens > 2000 || userMessage.length > 800;
+  const maxTokens  = isLargeRequest ? 8192 : 2048;
+  const taskType   = isLargeRequest ? 'schema_generation' : 'chat';
+
   const response = await fetch('/api/ai-proxy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       messages,
       temperature:      0.2,
-      max_tokens:       2048,
+      max_tokens:       maxTokens,
       response_format:  { type: 'json_object' },
-      task_type:        'chat',
+      task_type:        taskType,
       preferred_model:  preferredModel,
       lang,
     }),

@@ -99,6 +99,17 @@ export function AIChatPanel() {
     const lang = detectLang(trimmed);
     setUiLang(lang);
 
+    // Warn for very large requests — suggest using the AI command bar instead
+    const isVeryLarge = trimmed.length > 1500;
+    if (isVeryLarge) {
+      const confirmed = window.confirm(
+        lang === 'en'
+          ? 'This is a very large request. For best results generating a full schema, use the AI bar at the bottom of the canvas instead. Continue with chat anyway?'
+          : 'هذا طلب كبير جداً. للحصول على أفضل نتائج لتوليد schema كامل، استخدم شريط الـ AI في أسفل الـ canvas. هل تريد المتابعة عبر الـ Chat؟',
+      );
+      if (!confirmed) return;
+    }
+
     // Make sure we have an active conversation
     let convId = activeConversationId;
     if (!convId) {
