@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react';
-import { AppShell }   from './app/AppShell';
-import { AuthModal }  from './components/AuthModal';
-import { AuthHero }   from './components/AuthHero';
+import { useEffect, useRef, useState } from 'react';
+import { AppShell }    from './app/AppShell';
+import { AuthModal }   from './components/AuthModal';
+import { AuthHero }    from './components/AuthHero';
+import { LoadingPage } from './components/LoadingPage';
 import { useAuthStore } from './stores/authStore';
 import { useMultiSchemaStore } from './stores/multiSchemaStore';
 import { useSchemaStore } from './stores/schemaStore';
@@ -14,6 +15,9 @@ function App() {
   const resetSchema  = useSchemaStore((s) => s.resetForSignOut);
   const initChatUser = useChatStore((s) => s.initForUser);
   const resetChat    = useChatStore((s) => s.resetForSignOut);
+
+  // Track whether we've shown the initial loading page
+  const [showLoadingPage, setShowLoadingPage] = useState(true);
 
   // Track the userId we last loaded cloud data for — prevents duplicate loads
   const loadedForRef = useRef<string | null>(null);
@@ -50,7 +54,12 @@ function App() {
     resetChat();
   }, [user, initialized, resetSchema, resetMultiSchema, resetChat]);
 
-  // Show the animated diagram as loading screen while checking session
+  // Show initial loading page (full-screen diagram animation)
+  if (showLoadingPage) {
+    return <LoadingPage onComplete={() => setShowLoadingPage(false)} />;
+  }
+
+  // Show splash screen while checking session (after loading page is done)
   if (!initialized) {
     return (
       <div className="splash-screen">
