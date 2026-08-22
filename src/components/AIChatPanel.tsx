@@ -99,15 +99,13 @@ export function AIChatPanel() {
     const lang = detectLang(trimmed);
     setUiLang(lang);
 
-    // For very large schemas (>10 entities), guide users to use AICommandBar for generation requests
-    const isLargeSchema = schema.entities.length > 10;
-    const isGenerationRequest = /generate|create|add\s+\d+|build.*entit/i.test(trimmed);
-    
-    if (isLargeSchema && (isGenerationRequest || trimmed.length > 400)) {
+    // HARD BLOCK: Chat Panel cannot handle schemas with >8 entities due to Vercel 4.5MB limit
+    // This prevents 413 errors by forcing users to AICommandBar for large schemas
+    if (schema.entities.length > 8) {
       setError(
         lang === 'en'
-          ? 'For large schemas, use the AI Command Bar (bottom of canvas) for bulk operations. Chat is best for small edits.'
-          : 'للـ schemas الكبيرة، استخدم شريط الـ AI (أسفل الـ canvas) للعمليات الكبيرة. الـ Chat أفضل للتعديلات الصغيرة.'
+          ? '⚠️ Chat unavailable for large schemas (>8 entities). Use AI Command Bar at bottom of canvas for schema operations.'
+          : '⚠️ الـ Chat غير متاح للـ schemas الكبيرة (>8 entities). استخدم شريط الـ AI أسفل الـ canvas.'
       );
       return;
     }
@@ -180,6 +178,18 @@ export function AIChatPanel() {
 
   return (
     <div className="chat-panel">
+
+      {/* ── Large schema warning ── */}
+      {schema.entities.length > 8 && (
+        <div className="chat-warning-banner">
+          <span className="chat-warning-icon">⚠️</span>
+          <span className="chat-warning-text">
+            {uiLang === 'en'
+              ? 'Chat is limited for large schemas. Use AI Command Bar (bottom) for operations.'
+              : 'الـ Chat محدود للـ schemas الكبيرة. استخدم شريط الـ AI (أسفل) للعمليات.'}
+          </span>
+        </div>
+      )}
 
       {/* ── Model selector bar ── */}
       <div className="chat-model-bar" ref={modelMenuRef}>

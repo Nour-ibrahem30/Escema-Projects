@@ -5890,3 +5890,37 @@ textarea.form-input {
   background: linear-gradient(135deg, rgba(251, 146, 60, 0.12), rgba(251, 191, 36, 0.12));
   border-color: rgba(251, 146, 60, 0.25);
 }
+
+/* ─── Chat Warning Banner ───────────────────────────────────── */
+
+.chat-warning-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(251, 146, 60, 0.12));
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: var(--radius-md);
+  margin: 0.5rem 0.5rem 0;
+}
+
+.chat-warning-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.chat-warning-text {
+  font-size: 0.75rem;
+  color: #fb923c;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+[data-theme="light"] .chat-warning-banner {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(251, 146, 60, 0.08));
+  border-color: rgba(245, 158, 11, 0.25);
+}
+
+[data-theme="light"] .chat-warning-text {
+  color: #ea580c;
+}
