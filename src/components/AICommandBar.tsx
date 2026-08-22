@@ -24,7 +24,6 @@ type Props = {
 };
 
 export function AICommandBar({ onSchemaGenerated }: Props) {
-  const schema = useSchemaStore((s) => s.schema);
   const store = useSchemaStore();
   const addHistoryEntry = useSchemaHistoryStore((s) => s.addEntry);
 
@@ -80,6 +79,7 @@ export function AICommandBar({ onSchemaGenerated }: Props) {
       relationships: [],
       enums: [],
       indexes: [],
+      constraints: [],
     };
 
     await generateSchema(trimmed, emptySchema, {
