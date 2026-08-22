@@ -5,6 +5,7 @@ import { parseAIError } from '../ai/errorHandler';
 import { detectLang, type Lang } from '../ai/i18n';
 import { useSchemaStore } from '../stores/schemaStore';
 import { useSchemaHistoryStore } from '../stores/schemaHistoryStore';
+import type { SchemaModel } from '../types';
 
 type Status = 'idle' | 'loading' | 'streaming' | 'done' | 'error';
 
@@ -68,7 +69,20 @@ export function AICommandBar({ onSchemaGenerated }: Props) {
     setErrorMsg('');
     streamRef.current = '';
 
-    await generateSchema(trimmed, schema, {
+    // CRITICAL: Pass empty schema to avoid 413 errors
+    // Command Bar is for fresh generation only, not editing
+    const emptySchema: SchemaModel = {
+      id: '',
+      name: 'New Schema',
+      description: '',
+      version: 0,
+      entities: [],
+      relationships: [],
+      enums: [],
+      indexes: [],
+    };
+
+    await generateSchema(trimmed, emptySchema, {
       onChunk: (chunk) => {
         streamRef.current = chunk;
         setStreamText(chunk);
