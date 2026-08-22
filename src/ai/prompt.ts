@@ -114,6 +114,8 @@ export function buildUserPrompt(
   userMessage: string,
   currentSchema: SchemaModel,
 ): string {
+  // For Command Bar requests, ignore existing schema to avoid 413 errors
+  // Command Bar is for fresh generation, not editing
   const hasEntities = currentSchema.entities.length > 0;
 
   const base = `Design a complete, production-ready database schema for the following:
@@ -132,13 +134,15 @@ Requirements:
 
 IMPORTANT: Do not stop early. Generate the FULL schema with ALL requested entities, relationships, and enums.`;
 
-  if (hasEntities) {
+  // Only mention existing schema if it's small (<= 3 entities)
+  // This prevents 413 errors while still allowing minor edits
+  if (hasEntities && currentSchema.entities.length <= 3) {
     const summary = currentSchema.entities
-      .map((e) => `  - ${e.name} (${e.fields.length} fields)`)
+      .map((e) => `  - ${e.name}`)
       .join('\n');
     return `${base}
 
-Current schema context (extend or replace as needed):
+Current schema (you can extend or replace):
 ${summary}`;
   }
 
