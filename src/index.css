@@ -4028,7 +4028,7 @@ textarea.form-input {
   justify-content: center;
   overflow: hidden;
   background: #080e1a;
-  padding: 2rem;
+  padding: 4rem 3rem;
   opacity: 1;
   transition: opacity 0.8s ease-out;
 }
@@ -4036,6 +4036,21 @@ textarea.form-input {
 .loading-page--fade-out {
   opacity: 0;
   pointer-events: none;
+}
+
+/* Make diagram smaller and more comfortable in loading page */
+.loading-page .ah-svg {
+  width: 70%;
+  max-width: 900px;
+}
+
+.loading-page .ah-tagline {
+  margin-top: 2.5rem;
+  font-size: 0.95rem;
+}
+
+.loading-page .ah-tagline-brand {
+  font-size: 1.25rem;
 }
 
 /* ─── Auth Screen (split layout) ──────────────────────────── */
@@ -4048,7 +4063,7 @@ textarea.form-input {
 }
 
 .auth-panel {
-  width: 380px;
+  width: 450px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
