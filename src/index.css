@@ -5796,3 +5796,54 @@ textarea.form-input {
 .chat-history-delete:hover {
   opacity: 1;
 }
+
+/* ─── Version Badge ────────────────────────────────────────── */
+
+.version-badge {
+  position: absolute;
+  bottom: 1rem;
+  right: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(99, 140, 255, 0.15);
+  border-radius: 1.25rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  z-index: 5;
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.version-badge-label {
+  color: #60a5fa;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.version-badge-status {
+  padding: 0.125rem 0.5rem;
+  background: linear-gradient(135deg, rgba(251, 146, 60, 0.15), rgba(251, 191, 36, 0.15));
+  border: 1px solid rgba(251, 146, 60, 0.3);
+  border-radius: 0.75rem;
+  color: #fb923c;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+[data-theme="light"] .version-badge {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(59, 130, 246, 0.2);
+}
+
+[data-theme="light"] .version-badge-status {
+  background: linear-gradient(135deg, rgba(251, 146, 60, 0.12), rgba(251, 191, 36, 0.12));
+  border-color: rgba(251, 146, 60, 0.25);
+}
