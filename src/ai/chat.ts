@@ -133,6 +133,29 @@ function extractJSON(text: string): string {
 }
 
 function schemaToContext(schema: SchemaModel): string {
+  // For large schemas, send a condensed summary instead of full details
+  const entityCount = schema.entities.length;
+  const relationshipCount = schema.relationships.length;
+  const enumCount = schema.enums.length;
+  
+  // If schema is large (>10 entities), use condensed format
+  if (entityCount > 10) {
+    const entityNames = schema.entities.map((e) => e.name).join(', ');
+    const relSummary = schema.relationships.map((r) => {
+      const src = schema.entities.find((e) => e.id === r.sourceEntityId)?.name ?? '?';
+      const tgt = schema.entities.find((e) => e.id === r.targetEntityId)?.name ?? '?';
+      return `${src}→${tgt}(${r.type})`;
+    }).join('; ');
+    
+    return [
+      `Schema: "${schema.name}"`,
+      `${entityCount} entities: ${entityNames}`,
+      relationshipCount > 0 ? `${relationshipCount} relationships: ${relSummary}` : '',
+      enumCount > 0 ? `${enumCount} enums` : '',
+    ].filter(Boolean).join('\n');
+  }
+
+  // For smaller schemas, keep detailed format
   const entities = schema.entities.map((e) => {
     const fields = e.fields.map((f) =>
       `    - ${f.name}: ${typeof f.type === 'object' ? 'enum' : f.type}${f.primaryKey ? ' [PK]' : ''}${f.unique ? ' [UNIQUE]' : ''}${f.nullable ? '' : ' [NOT NULL]'}`,
@@ -166,13 +189,16 @@ export async function sendChatMessage(
 ): Promise<ChatResponse> {
   const lang: Lang = detectLang(userMessage);
 
+  // Limit history to last 5 messages to prevent payload bloat
+  const recentHistory = history.slice(-5);
+
   const messages = [
     { role: 'system', content: CHAT_SYSTEM_PROMPT },
     {
       role: 'user',
       content: `Current schema context:\n${schemaToContext(schema)}`,
     },
-    ...history.map((m) => ({ role: m.role, content: m.content })),
+    ...recentHistory.map((m) => ({ role: m.role, content: m.content })),
     { role: 'user', content: userMessage },
   ];
 
