@@ -99,15 +99,14 @@ export function AIChatPanel() {
     const lang = detectLang(trimmed);
     setUiLang(lang);
 
-    // Warn for very large requests — suggest using the AI command bar instead
-    const isVeryLarge = trimmed.length > 1500;
-    if (isVeryLarge) {
-      const confirmed = window.confirm(
+    // Reject very large messages — they should use the AI bar instead
+    if (trimmed.length > 1200) {
+      setError(
         lang === 'en'
-          ? 'This is a very large request. For best results generating a full schema, use the AI bar at the bottom of the canvas instead. Continue with chat anyway?'
-          : 'هذا طلب كبير جداً. للحصول على أفضل نتائج لتوليد schema كامل، استخدم شريط الـ AI في أسفل الـ canvas. هل تريد المتابعة عبر الـ Chat؟',
+          ? 'Message too long. For large schema changes, use the AI bar at the bottom of the canvas.'
+          : 'الرسالة طويلة جداً. للتعديلات الكبيرة، استخدم شريط الـ AI في أسفل الـ canvas.'
       );
-      if (!confirmed) return;
+      return;
     }
 
     // Make sure we have an active conversation
@@ -349,25 +348,32 @@ export function AIChatPanel() {
 
       {/* ── Input ── */}
       <div className="chat-input-row">
-        <input
-          type="text"
-          className="chat-input"
-          placeholder={
-            !hasEntities
-              ? (uiLang === 'en' ? 'Generate a schema first…' : 'ولّد schema أولاً…')
-              : (uiLang === 'en' ? 'Ask me to edit the schema…' : 'اسألني لتعديل الـ schema…')
-          }
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
-          disabled={!hasEntities || loading}
-          dir="auto"
-        />
+        <div className="chat-input-wrapper">
+          <input
+            type="text"
+            className="chat-input"
+            placeholder={
+              !hasEntities
+                ? (uiLang === 'en' ? 'Generate a schema first…' : 'ولّد schema أولاً…')
+                : (uiLang === 'en' ? 'Ask me to edit the schema…' : 'اسألني لتعديل الـ schema…')
+            }
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+            disabled={!hasEntities || loading}
+            dir="auto"
+          />
+          {input.length > 800 && (
+            <span className={`chat-char-count${input.length > 1200 ? ' chat-char-count--warn' : ''}`}>
+              {input.length}/1200
+            </span>
+          )}
+        </div>
         <button
           type="button"
           className="send-btn"
           onClick={handleSend}
-          disabled={!hasEntities || !input.trim() || loading}
+          disabled={!hasEntities || !input.trim() || loading || input.length > 1200}
         >
           {loading ? <span className="spin">⟳</span> : '↵'}
         </button>
