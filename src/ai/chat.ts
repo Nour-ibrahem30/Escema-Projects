@@ -133,7 +133,27 @@ function extractJSON(text: string): string {
 }
 
 function schemaToContext(schema: SchemaModel): string {
-  // Always send full detailed format — no condensing
+  const entityCount = schema.entities.length;
+  
+  // For very large schemas (>15 entities), send condensed summary to avoid 413
+  // This keeps the request body under Vercel's limit while preserving context
+  if (entityCount > 15) {
+    const entityNames = schema.entities.map((e) => e.name).join(', ');
+    const relSummary = schema.relationships.slice(0, 20).map((r) => {
+      const src = schema.entities.find((e) => e.id === r.sourceEntityId)?.name ?? '?';
+      const tgt = schema.entities.find((e) => e.id === r.targetEntityId)?.name ?? '?';
+      return `${src}→${tgt}`;
+    }).join(', ');
+    
+    return [
+      `Schema: "${schema.name}" (${entityCount} entities, ${schema.relationships.length} relationships)`,
+      `Entities: ${entityNames}`,
+      schema.relationships.length > 0 ? `Key relationships: ${relSummary}${schema.relationships.length > 20 ? '...' : ''}` : '',
+      schema.enums.length > 0 ? `${schema.enums.length} enums defined` : '',
+    ].filter(Boolean).join('\n');
+  }
+
+  // For smaller schemas (<= 15 entities), send full details
   const entities = schema.entities.map((e) => {
     const fields = e.fields.map((f) =>
       `    - ${f.name}: ${typeof f.type === 'object' ? 'enum' : f.type}${f.primaryKey ? ' [PK]' : ''}${f.unique ? ' [UNIQUE]' : ''}${f.nullable ? '' : ' [NOT NULL]'}`,
@@ -167,14 +187,17 @@ export async function sendChatMessage(
 ): Promise<ChatResponse> {
   const lang: Lang = detectLang(userMessage);
 
-  // Keep full history — no artificial limits
+  // Limit history to last 8 messages to keep payload under Vercel's 50MB limit
+  // For very large schemas, this prevents 413 errors
+  const recentHistory = history.slice(-8);
+
   const messages = [
     { role: 'system', content: CHAT_SYSTEM_PROMPT },
     {
       role: 'user',
       content: `Current schema context:\n${schemaToContext(schema)}`,
     },
-    ...history.map((m) => ({ role: m.role, content: m.content })),
+    ...recentHistory.map((m) => ({ role: m.role, content: m.content })),
     { role: 'user', content: userMessage },
   ];
 
