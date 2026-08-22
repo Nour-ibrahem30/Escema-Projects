@@ -35,14 +35,9 @@ export function AuthModal() {
   const showGitHub = userProviders.length === 0 || userProviders.includes('github');
 
   return (
-    <div className="login-page">
-      {/* ── Background star field ── */}
-      <div className="login-bg" />
+    <div className="login-card">
 
-      {/* ── Centered card ── */}
-      <div className="login-card">
-
-        {/* Logo */}
+      {/* Logo */}
         <div className="login-logo">
           <div className="login-logo-icon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -149,7 +144,6 @@ export function AuthModal() {
           {mode === 'reset'  && <button type="button" onClick={() => { setMode('signin'); reset(); }}>← Back to sign in</button>}
         </p>
 
-      </div>
     </div>
   );
 }

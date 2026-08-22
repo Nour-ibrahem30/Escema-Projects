@@ -55,7 +55,6 @@ function App() {
     return (
       <div className="splash-screen">
         <AuthHero />
-        {/* Thin progress bar at the very bottom */}
         <div className="splash-bar">
           <div className="splash-bar-fill" />
         </div>
@@ -63,9 +62,18 @@ function App() {
     );
   }
 
-  // Not authenticated → show auth screen
+  // Not authenticated → diagram stays as background, form overlays it
   if (!user) {
-    return <AuthModal />;
+    return (
+      <div className="splash-screen">
+        {/* Diagram always visible as background */}
+        <AuthHero />
+        {/* Login form overlaid on top with fade-in */}
+        <div className="login-overlay">
+          <AuthModal />
+        </div>
+      </div>
+    );
   }
 
   // Authenticated → show app

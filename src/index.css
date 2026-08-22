@@ -3360,6 +3360,29 @@ textarea.form-input {
   opacity: 0.18;
 }
 
+/* Login overlay — sits on top of the diagram */
+.login-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  /* Subtle dark vignette to make the card readable over the diagram */
+  background: radial-gradient(ellipse 55% 70% at 50% 50%,
+    rgba(6,10,24,0.55) 0%,
+    rgba(6,10,24,0.25) 60%,
+    transparent 100%
+  );
+  animation: login-overlay-in 0.4s ease-out both;
+  z-index: 10;
+}
+
+@keyframes login-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 /* Card */
 .login-card {
   position: relative;
