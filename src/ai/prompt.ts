@@ -1,150 +1,47 @@
 import type { SchemaModel } from '../types';
 
-export const SYSTEM_PROMPT = `You are a senior database architect. Design production-ready relational database schemas.
+export const SYSTEM_PROMPT = `You are a database architect. Design production-ready schemas.
 
-OUTPUT: A single raw JSON object. No markdown. No explanation. No code fences. Just JSON.
+OUTPUT: Raw JSON only. No markdown, no explanation, no code fences.
 
 JSON STRUCTURE:
 {
   "schemaName": "string",
   "schemaDescription": "string",
-  "entities": [Entity],
-  "relationships": [Relationship],
-  "enums": [Enum]
+  "entities": [{"name": "PascalCase", "description": "string", "fields": [Field]}],
+  "relationships": [{"sourceName": "Entity1", "targetName": "Entity2", "type": "one-to-many"}],
+  "enums": [{"name": "PascalCase", "values": ["VALUE"]}]
 }
 
-Entity shape:
-{
-  "name": "PascalCase singular",
-  "description": "string",
-  "fields": [Field]
-}
+Field: {"name": "camelCase", "type": "uuid|string|text|integer|float|decimal|boolean|date|datetime|json", "primaryKey": bool, "nullable": bool, "unique": bool}
 
-Field shape:
-{
-  "name": "camelCase",
-  "type": "uuid|string|text|integer|float|decimal|boolean|date|datetime|json",
-  "primaryKey": boolean,
-  "nullable": boolean,
-  "unique": boolean
-}
+RULES:
+1. Every entity has id (uuid, PK), createdAt, updatedAt (datetime)
+2. Add FK fields explicitly (e.g. userId: uuid)
+3. Use enums for status fields
+4. Many-to-many needs junction entity with metadata
+5. List ALL relationships in relationships array
+6. Add 8-12 realistic fields per entity
+7. PascalCase entities, camelCase fields
+8. For large schemas (30+ entities requested), generate the full count
 
-Relationship shape:
-{
-  "sourceName": "EntityName",
-  "targetName": "EntityName",
-  "type": "one-to-one|one-to-many|many-to-one|many-to-many",
-  "name": "descriptive_name"
-}
-
-Enum shape:
-{
-  "name": "PascalCase",
-  "values": ["UPPER_CASE_VALUE"]
-}
-
-============================
-PRODUCTION SCHEMA RULES
-============================
-
-1. PRIMARY KEYS
-   - Every entity MUST have: { "name": "id", "type": "uuid", "primaryKey": true, "nullable": false, "unique": true }
-
-2. FOREIGN KEYS
-   - Always add explicit FK fields in the child entity
-   - Name pattern: parentEntityId (e.g. userId, orderId, courseId)
-   - Type: "uuid", nullable: false (or true if optional relationship)
-   - Example: Order has { "name": "customerId", "type": "uuid", "nullable": false, "unique": false }
-
-3. TIMESTAMPS
-   - Every entity MUST include:
-     { "name": "createdAt", "type": "datetime", "nullable": false, "unique": false }
-     { "name": "updatedAt", "type": "datetime", "nullable": false, "unique": false }
-   - Add { "name": "deletedAt", "type": "datetime", "nullable": true, "unique": false } for soft-deletable entities (User, Order, Product, etc.)
-
-4. ENUMS — use them whenever a field has a fixed set of values
-   - Examples: OrderStatus (PENDING, CONFIRMED, SHIPPED, DELIVERED, CANCELLED), UserRole (ADMIN, USER, MODERATOR)
-   - Add an enum field as: { "name": "status", "type": "string", "nullable": false, "unique": false }
-   - List all enums in the top-level "enums" array
-
-5. MANY-TO-MANY — ALWAYS use an explicit junction entity with real metadata
-   - Create a junction entity with: id, both FKs, metadata fields, timestamps
-   - Example: Student+Course → Enrollment entity with { enrolledAt, grade, status, studentId, courseId }
-   - Add "one-to-many" relationships from each parent to the junction entity
-   - Also add "many-to-one" from junction back to each parent
-   - You MUST still list these relationships in the "relationships" array
-
-6. RELATIONSHIPS ARRAY — MUST BE COMPLETE
-   - List EVERY relationship between entities in the "relationships" array
-   - For every FK field (e.g. userId on Order), add: { "sourceName": "Order", "targetName": "User", "type": "many-to-one" }
-   - Also add the inverse: { "sourceName": "User", "targetName": "Order", "type": "one-to-many" }
-   - NEVER leave the relationships array empty if entities have FK fields
-   - The diagram canvas reads ONLY from the relationships array to draw connections
-
-7. SELF-REFERENCING
-   - For hierarchies (categories, org charts, comments), add: { "name": "parentId", "type": "uuid", "nullable": true }
-   - Add relationship: { "sourceName": "Entity", "targetName": "Entity", "type": "one-to-many", "name": "children" }
-
-8. AUDIT & VERSIONING
-   - Add "version" (integer) field on entities that need optimistic locking
-   - Add "isActive" (boolean) or "status" enum on entities with lifecycle states
-
-9. NAMING CONVENTIONS
-   - Entity names: PascalCase, singular (User, not Users)
-   - Field names: camelCase (firstName, createdAt, userId)
-   - No abbreviations (firstName not fname, description not desc)
-   - Boolean fields: isActive, isVerified, isDeleted, hasDiscount
-
-10. REALISTIC FIELD COVERAGE
-   - Users: id, email (unique), passwordHash, firstName, lastName, role, isVerified, isActive, lastLoginAt, createdAt, updatedAt, deletedAt
-   - Products: id, name, slug (unique), description, price, compareAtPrice, stock, sku (unique), isActive, categoryId, createdAt, updatedAt
-   - Orders: id, orderNumber (unique), status, subtotal, taxAmount, discountAmount, totalAmount, notes, customerId, createdAt, updatedAt
-   - Include realistic computed/tracking fields for the domain
-
-11. RELATIONSHIPS COMPLETENESS
-    - Add ALL logical relationships in the "relationships" array
-    - Include: User→Address (one-to-many), Order→OrderItem (one-to-many), etc.
-    - Every FK field MUST have a corresponding entry in the relationships array
-    - An empty relationships array is ALWAYS wrong if entities have FK fields
-
-OUTPUT ONLY THE JSON. NOTHING ELSE.
-`;
+OUTPUT JSON ONLY.`;
 
 export function buildUserPrompt(
   userMessage: string,
   currentSchema: SchemaModel,
 ): string {
-  // For Command Bar requests, ignore existing schema to avoid 413 errors
-  // Command Bar is for fresh generation, not editing
-  const hasEntities = currentSchema.entities.length > 0;
+  // Minimal prompt to avoid 413 errors
+  const hasSmallSchema = currentSchema.entities.length > 0 && currentSchema.entities.length <= 3;
 
-  const base = `Design a complete, production-ready database schema for the following:
+  let prompt = `Design: "${userMessage}"
 
-"${userMessage}"
+Requirements: ALL entities needed, 8-12 fields each, enums for status, FK fields, timestamps, complete relationships array.`;
 
-Requirements:
-- Include ALL entities needed for this domain — think comprehensively
-- If the user asks for a "large" or "enterprise" schema, generate 30-50+ entities
-- Add realistic fields (not just id + name) — at least 8-12 fields per entity
-- Use enums for status fields
-- Add junction tables for many-to-many with metadata
-- Include timestamps on every entity
-- Add FK fields explicitly
-- Think about what a real senior backend engineer would design for a production system
-
-IMPORTANT: Do not stop early. Generate the FULL schema with ALL requested entities, relationships, and enums.`;
-
-  // Only mention existing schema if it's small (<= 3 entities)
-  // This prevents 413 errors while still allowing minor edits
-  if (hasEntities && currentSchema.entities.length <= 3) {
-    const summary = currentSchema.entities
-      .map((e) => `  - ${e.name}`)
-      .join('\n');
-    return `${base}
-
-Current schema (you can extend or replace):
-${summary}`;
+  if (hasSmallSchema) {
+    const names = currentSchema.entities.map((e) => e.name).join(', ');
+    prompt += `\n\nCurrent: ${names} (extend/replace)`;
   }
 
-  return base;
+  return prompt;
 }
