@@ -3476,8 +3476,8 @@ textarea.form-input {
 .ah-svg {
   position: relative;
   z-index: 1;
-  width: 100%;
-  max-width: 660px;
+  width: 80%;
+  max-width: none;
   height: auto;
   overflow: visible;
 }
