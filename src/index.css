@@ -4430,6 +4430,7 @@ textarea.form-input {
   overflow: hidden;
   background: #080e1a;
   padding: 2rem;
+  width: 100%;
 }
 
 .ah-blob {
