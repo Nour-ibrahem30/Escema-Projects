@@ -142,6 +142,7 @@ export function AIChatPanel() {
       };
       addMessage(convId, assistantEntry);
     } catch (err) {
+      console.error('[AIChatPanel] Error:', err);
       const msg = err instanceof Error ? err.message
         : (uiLang === 'en' ? 'An error occurred. Please try again.' : 'حدث خطأ، حاول مرة أخرى.');
       const { retryAfterSecs } = parseAIError(JSON.stringify({ error: msg }), uiLang);

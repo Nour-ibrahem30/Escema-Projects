@@ -211,7 +211,16 @@ export async function sendChatMessage(
     _model_used?: string;
   };
 
-  const raw       = data.choices?.[0]?.message?.content ?? '{}';
+  // Validate response structure
+  if (!data.choices || data.choices.length === 0 || !data.choices[0]?.message?.content) {
+    throw new Error(
+      lang === 'en' 
+        ? 'Invalid response from AI service. Please try again.'
+        : 'رد غير صالح من خدمة الذكاء الاصطناعي. حاول مرة أخرى.'
+    );
+  }
+
+  const raw       = data.choices[0].message.content;
   const modelUsed = data._model_used;
 
   // Strip <think> blocks first — preserve the rest for fallback display
