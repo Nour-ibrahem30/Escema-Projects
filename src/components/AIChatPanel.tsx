@@ -99,20 +99,18 @@ export function AIChatPanel() {
     const lang = detectLang(trimmed);
     setUiLang(lang);
 
-    // For very large schemas (>15 entities), guide users to use AICommandBar for complex generation
-    const isLargeSchema = schema.entities.length > 15;
-    const isComplexRequest = trimmed.length > 500 || /generate|create|add.*entit(y|ies)/i.test(trimmed);
+    // For very large schemas (>10 entities), guide users to use AICommandBar for generation requests
+    const isLargeSchema = schema.entities.length > 10;
+    const isGenerationRequest = /generate|create|add\s+\d+|build.*entit/i.test(trimmed);
     
-    if (isLargeSchema && isComplexRequest) {
+    if (isLargeSchema && (isGenerationRequest || trimmed.length > 400)) {
       setError(
         lang === 'en'
-          ? 'For large schema modifications, please use the AI Command Bar at the bottom of the canvas. It\'s optimized for bulk operations.'
-          : 'للتعديلات الكبيرة، استخدم شريط الـ AI أسفل الـ canvas. هو مخصص للعمليات الكبيرة.'
+          ? 'For large schemas, use the AI Command Bar (bottom of canvas) for bulk operations. Chat is best for small edits.'
+          : 'للـ schemas الكبيرة، استخدم شريط الـ AI (أسفل الـ canvas) للعمليات الكبيرة. الـ Chat أفضل للتعديلات الصغيرة.'
       );
       return;
     }
-
-    // No length restriction for regular edits — users can send detailed messages
 
     // Make sure we have an active conversation
     let convId = activeConversationId;

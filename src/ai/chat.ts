@@ -135,25 +135,18 @@ function extractJSON(text: string): string {
 function schemaToContext(schema: SchemaModel): string {
   const entityCount = schema.entities.length;
   
-  // For very large schemas (>15 entities), send condensed summary to avoid 413
-  // This keeps the request body under Vercel's limit while preserving context
-  if (entityCount > 15) {
+  // For very large schemas (>10 entities), use ultra-condensed format to avoid 413
+  // This is critical to stay under Vercel's 4.5MB request body limit
+  if (entityCount > 10) {
     const entityNames = schema.entities.map((e) => e.name).join(', ');
-    const relSummary = schema.relationships.slice(0, 20).map((r) => {
-      const src = schema.entities.find((e) => e.id === r.sourceEntityId)?.name ?? '?';
-      const tgt = schema.entities.find((e) => e.id === r.targetEntityId)?.name ?? '?';
-      return `${src}→${tgt}`;
-    }).join(', ');
-    
     return [
-      `Schema: "${schema.name}" (${entityCount} entities, ${schema.relationships.length} relationships)`,
+      `Schema: "${schema.name}" (${entityCount} entities, ${schema.relationships.length} relationships, ${schema.enums.length} enums)`,
       `Entities: ${entityNames}`,
-      schema.relationships.length > 0 ? `Key relationships: ${relSummary}${schema.relationships.length > 20 ? '...' : ''}` : '',
-      schema.enums.length > 0 ? `${schema.enums.length} enums defined` : '',
+      `Note: Full schema details available. Ask specific questions about entities/relationships.`,
     ].filter(Boolean).join('\n');
   }
 
-  // For smaller schemas (<= 15 entities), send full details
+  // For smaller schemas (<= 10 entities), send full details
   const entities = schema.entities.map((e) => {
     const fields = e.fields.map((f) =>
       `    - ${f.name}: ${typeof f.type === 'object' ? 'enum' : f.type}${f.primaryKey ? ' [PK]' : ''}${f.unique ? ' [UNIQUE]' : ''}${f.nullable ? '' : ' [NOT NULL]'}`,
@@ -187,9 +180,9 @@ export async function sendChatMessage(
 ): Promise<ChatResponse> {
   const lang: Lang = detectLang(userMessage);
 
-  // Limit history to last 8 messages to keep payload under Vercel's 50MB limit
-  // For very large schemas, this prevents 413 errors
-  const recentHistory = history.slice(-8);
+  // Limit history to last 4 messages to keep payload under Vercel's 4.5MB limit
+  // For very large schemas, even this may need to be reduced
+  const recentHistory = history.slice(-4);
 
   const messages = [
     { role: 'system', content: CHAT_SYSTEM_PROMPT },
