@@ -62,14 +62,12 @@ function App() {
     );
   }
 
-  // Not authenticated → diagram stays as background, form overlays it
+  // Not authenticated → show split auth screen (diagram left, form right)
   if (!user) {
     return (
-      <div className="splash-screen">
-        {/* Diagram always visible as background */}
+      <div className="auth-screen">
         <AuthHero />
-        {/* Login form overlaid on top with fade-in */}
-        <div className="login-overlay">
+        <div className="auth-panel">
           <AuthModal />
         </div>
       </div>
