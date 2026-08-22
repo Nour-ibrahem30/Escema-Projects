@@ -256,6 +256,13 @@ export function AppShell() {
             <div className="header-logo-icon">⬡</div>
             <h1>Schema<span style={{ color: 'var(--brand-400)' }}>AI</span></h1>
           </div>
+          
+          {/* Version badge */}
+          <div className="version-badge-header">
+            <span className="version-badge-label">v0.8.0-beta</span>
+            <span className="version-badge-status">Under Production</span>
+          </div>
+          
           <div className="header-divider" />
           <p className="subtitle">{schema.name} · <span style={{ opacity: 0.6 }}>v{schema.version}</span></p>
         </div>

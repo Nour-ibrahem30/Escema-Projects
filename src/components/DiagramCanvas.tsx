@@ -357,12 +357,6 @@ export function DiagramCanvas() {
           </span>
         )}
       </div>
-
-      {/* Version badge */}
-      <div className="version-badge">
-        <span className="version-badge-label">v0.8.0-beta</span>
-        <span className="version-badge-status">Under Production</span>
-      </div>
     </div>
   );
 }
