@@ -186,60 +186,79 @@ export async function sendChatMessage(
   const maxTokens  = isLargeRequest ? 8192 : 2048;
   const taskType   = isLargeRequest ? 'schema_generation' : 'chat';
 
-  const response = await fetch('/api/ai-proxy', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      messages,
-      temperature:      0.2,
-      max_tokens:       maxTokens,
-      response_format:  { type: 'json_object' },
-      task_type:        taskType,
-      preferred_model:  preferredModel,
-      lang,
-    }),
-  });
-
-  if (!response.ok) {
-    const errText = await response.text().catch(() => '');
-    const { message } = parseAIError(errText, lang);
-    throw new Error(message);
-  }
-
-  const data = await response.json() as {
-    choices: Array<{ message: { content: string } }>;
-    _model_used?: string;
-  };
-
-  // Validate response structure
-  if (!data.choices || data.choices.length === 0 || !data.choices[0]?.message?.content) {
-    throw new Error(
-      lang === 'en' 
-        ? 'Invalid response from AI service. Please try again.'
-        : 'رد غير صالح من خدمة الذكاء الاصطناعي. حاول مرة أخرى.'
-    );
-  }
-
-  const raw       = data.choices[0].message.content;
-  const modelUsed = data._model_used;
-
-  // Strip <think> blocks first — preserve the rest for fallback display
-  const withoutThink = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-
-  // Try to extract and parse the JSON object
-  const extracted = extractJSON(withoutThink);
+  // Abort controller for timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 55000); // 55s timeout
 
   try {
-    const fixed  = jsonrepair(extracted);
-    const parsed = JSON.parse(fixed) as ChatResponse;
-    return {
-      // Use parsed.message if available, otherwise show the non-think content
-      message:   parsed.message?.trim() || withoutThink || raw,
-      patches:   Array.isArray(parsed.patches) ? parsed.patches : [],
-      modelUsed,
+    const response = await fetch('/api/ai-proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages,
+        temperature:      0.2,
+        max_tokens:       maxTokens,
+        response_format:  { type: 'json_object' },
+        task_type:        taskType,
+        preferred_model:  preferredModel,
+        lang,
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      const { message } = parseAIError(errText, lang);
+      throw new Error(message);
+    }
+
+    const data = await response.json() as {
+      choices: Array<{ message: { content: string } }>;
+      _model_used?: string;
     };
-  } catch {
-    // JSON parse failed — return whatever text the model produced (minus think blocks)
-    return { message: withoutThink || raw, patches: [], modelUsed };
+
+    // Validate response structure
+    if (!data.choices || data.choices.length === 0 || !data.choices[0]?.message?.content) {
+      throw new Error(
+        lang === 'en' 
+          ? 'Invalid response from AI service. Please try again.'
+          : 'رد غير صالح من خدمة الذكاء الاصطناعي. حاول مرة أخرى.'
+      );
+    }
+
+    const raw       = data.choices[0].message.content;
+    const modelUsed = data._model_used;
+
+    // Strip <think> blocks first — preserve the rest for fallback display
+    const withoutThink = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
+    // Try to extract and parse the JSON object
+    const extracted = extractJSON(withoutThink);
+
+    try {
+      const fixed  = jsonrepair(extracted);
+      const parsed = JSON.parse(fixed) as ChatResponse;
+      return {
+        // Use parsed.message if available, otherwise show the non-think content
+        message:   parsed.message?.trim() || withoutThink || raw,
+        patches:   Array.isArray(parsed.patches) ? parsed.patches : [],
+        modelUsed,
+      };
+    } catch {
+      // JSON parse failed — return whatever text the model produced (minus think blocks)
+      return { message: withoutThink || raw, patches: [], modelUsed };
+    }
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error(
+        lang === 'en'
+          ? 'Request timed out. The request is too large. Try using the AI bar below the canvas for large schema generation.'
+          : 'انتهت مهلة الطلب. الطلب كبير جداً. استخدم شريط الـ AI أسفل الـ canvas لتوليد schema كبير.'
+      );
+    }
+    throw err;
   }
 }
