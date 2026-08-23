@@ -73,8 +73,8 @@ Extract all database entities, models, and their relationships from the code abo
 
 // ─── Retry config ─────────────────────────────────────────────────────────────
 
-const MAX_RETRIES = 3;
-const RETRY_DELAYS_MS = [2000, 5000, 10000]; // exponential-ish
+const MAX_RETRIES = 4;
+const RETRY_DELAYS_MS = [3000, 8000, 15000, 30000]; // exponential backoff
 
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -221,6 +221,9 @@ export async function analyzeAllBatches(
     results.push(result);
     completed++;
     onProgress(batch.id, completed, batches.length, result.status);
+
+    // Small delay between batches to avoid rate limiting
+    if (queue.length > 0) await sleep(1500);
   }
 
   return results;

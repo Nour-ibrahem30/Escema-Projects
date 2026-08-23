@@ -7,9 +7,9 @@
 
 export const TOKEN_CONFIG = {
   /** Max input tokens per AI request (leave room for prompt overhead) */
-  maxInputTokensPerRequest: 3500,
+  maxInputTokensPerRequest: 12000,
   /** Max output tokens — schema JSON */
-  maxOutputTokens: 1500,
+  maxOutputTokens: 4000,
   /** Safety margin: use only this fraction of the limit */
   safetyMargin: 0.85,
   /** Prompt overhead (system prompt + instructions) in tokens */
