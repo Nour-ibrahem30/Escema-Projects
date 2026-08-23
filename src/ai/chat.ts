@@ -133,20 +133,6 @@ function extractJSON(text: string): string {
 }
 
 function schemaToContext(schema: SchemaModel): string {
-  const entityCount = schema.entities.length;
-  
-  // For very large schemas (>10 entities), use ultra-condensed format to avoid 413
-  // This is critical to stay under Vercel's 4.5MB request body limit
-  if (entityCount > 10) {
-    const entityNames = schema.entities.map((e) => e.name).join(', ');
-    return [
-      `Schema: "${schema.name}" (${entityCount} entities, ${schema.relationships.length} relationships, ${schema.enums.length} enums)`,
-      `Entities: ${entityNames}`,
-      `Note: Full schema details available. Ask specific questions about entities/relationships.`,
-    ].filter(Boolean).join('\n');
-  }
-
-  // For smaller schemas (<= 10 entities), send full details
   const entities = schema.entities.map((e) => {
     const fields = e.fields.map((f) =>
       `    - ${f.name}: ${typeof f.type === 'object' ? 'enum' : f.type}${f.primaryKey ? ' [PK]' : ''}${f.unique ? ' [UNIQUE]' : ''}${f.nullable ? '' : ' [NOT NULL]'}`,
@@ -180,103 +166,64 @@ export async function sendChatMessage(
 ): Promise<ChatResponse> {
   const lang: Lang = detectLang(userMessage);
 
-  // Limit history to last 4 messages to keep payload under Vercel's 4.5MB limit
-  // For very large schemas, even this may need to be reduced
-  const recentHistory = history.slice(-4);
-
   const messages = [
     { role: 'system', content: CHAT_SYSTEM_PROMPT },
     {
       role: 'user',
       content: `Current schema context:\n${schemaToContext(schema)}`,
     },
-    ...recentHistory.map((m) => ({ role: m.role, content: m.content })),
+    ...history.map((m) => ({ role: m.role, content: m.content })),
     { role: 'user', content: userMessage },
   ];
 
-  // Estimate total input tokens (~4 chars per token) to decide output budget
-  const inputChars  = messages.reduce((sum, m) => sum + m.content.length, 0);
-  const inputTokens = Math.ceil(inputChars / 4);
+  const apiUrl = import.meta.env.DEV
+    ? 'http://localhost:3001/api/ai-proxy'
+    : '/api/ai-proxy';
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      messages,
+      temperature:      0.2,
+      max_tokens:       2048,
+      response_format:  { type: 'json_object' },
+      task_type:        'chat',
+      preferred_model:  preferredModel,
+      lang,
+    }),
+  });
 
-  // For large requests (complex schema operations), use more output tokens
-  // and route to the strongest model via task_type
-  const isLargeRequest = inputTokens > 2000 || userMessage.length > 800;
-  const maxTokens  = isLargeRequest ? 16000 : 8000; // Generous limits for all scenarios
-  const taskType   = isLargeRequest ? 'schema_generation' : 'chat';
+  if (!response.ok) {
+    const errText = await response.text().catch(() => '');
+    const { message } = parseAIError(errText, lang);
+    throw new Error(message);
+  }
 
-  // Abort controller for timeout — increased to 90s for very large operations
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 90000);
+  const data = await response.json() as {
+    choices: Array<{ message: { content: string } }>;
+    _model_used?: string;
+  };
+
+  const raw       = data.choices?.[0]?.message?.content ?? '{}';
+  const modelUsed = data._model_used;
+
+  // Strip <think> blocks first — preserve the rest for fallback display
+  const withoutThink = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
+  // Try to extract and parse the JSON object
+  const extracted = extractJSON(withoutThink);
 
   try {
-    const response = await fetch('/api/ai-proxy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messages,
-        temperature:      0.2,
-        max_tokens:       maxTokens,
-        response_format:  { type: 'json_object' },
-        task_type:        taskType,
-        preferred_model:  preferredModel,
-        lang,
-      }),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const errText = await response.text().catch(() => '');
-      const { message } = parseAIError(errText, lang);
-      throw new Error(message);
-    }
-
-    const data = await response.json() as {
-      choices: Array<{ message: { content: string } }>;
-      _model_used?: string;
+    const fixed  = jsonrepair(extracted);
+    const parsed = JSON.parse(fixed) as ChatResponse;
+    return {
+      // Use parsed.message if available, otherwise show the non-think content
+      message:   parsed.message?.trim() || withoutThink || raw,
+      patches:   Array.isArray(parsed.patches) ? parsed.patches : [],
+      modelUsed,
     };
-
-    // Validate response structure
-    if (!data.choices || data.choices.length === 0 || !data.choices[0]?.message?.content) {
-      throw new Error(
-        lang === 'en' 
-          ? 'Invalid response from AI service. Please try again.'
-          : 'رد غير صالح من خدمة الذكاء الاصطناعي. حاول مرة أخرى.'
-      );
-    }
-
-    const raw       = data.choices[0].message.content;
-    const modelUsed = data._model_used;
-
-    // Strip <think> blocks first — preserve the rest for fallback display
-    const withoutThink = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-
-    // Try to extract and parse the JSON object
-    const extracted = extractJSON(withoutThink);
-
-    try {
-      const fixed  = jsonrepair(extracted);
-      const parsed = JSON.parse(fixed) as ChatResponse;
-      return {
-        // Use parsed.message if available, otherwise show the non-think content
-        message:   parsed.message?.trim() || withoutThink || raw,
-        patches:   Array.isArray(parsed.patches) ? parsed.patches : [],
-        modelUsed,
-      };
-    } catch {
-      // JSON parse failed — return whatever text the model produced (minus think blocks)
-      return { message: withoutThink || raw, patches: [], modelUsed };
-    }
-  } catch (err) {
-    clearTimeout(timeoutId);
-    if (err instanceof Error && err.name === 'AbortError') {
-      throw new Error(
-        lang === 'en'
-          ? 'Request timed out. The request is too large. Try using the AI bar below the canvas for large schema generation.'
-          : 'انتهت مهلة الطلب. الطلب كبير جداً. استخدم شريط الـ AI أسفل الـ canvas لتوليد schema كبير.'
-      );
-    }
-    throw err;
+  } catch {
+    // JSON parse failed — return whatever text the model produced (minus think blocks)
+    return { message: withoutThink || raw, patches: [], modelUsed };
   }
 }

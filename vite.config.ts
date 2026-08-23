@@ -6,6 +6,11 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
+      // AI Proxy (local server on port 3001)
+      '/api/ai-proxy': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
       // Groq
       '/proxy/groq': {
         target: 'https://api.groq.com',

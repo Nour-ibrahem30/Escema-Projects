@@ -99,17 +99,6 @@ export function AIChatPanel() {
     const lang = detectLang(trimmed);
     setUiLang(lang);
 
-    // HARD BLOCK: Chat Panel cannot handle schemas with >8 entities due to Vercel 4.5MB limit
-    // This prevents 413 errors by forcing users to AICommandBar for large schemas
-    if (schema.entities.length > 8) {
-      setError(
-        lang === 'en'
-          ? '⚠️ Chat unavailable for large schemas (>8 entities). Use AI Command Bar at bottom of canvas for schema operations.'
-          : '⚠️ الـ Chat غير متاح للـ schemas الكبيرة (>8 entities). استخدم شريط الـ AI أسفل الـ canvas.'
-      );
-      return;
-    }
-
     // Make sure we have an active conversation
     let convId = activeConversationId;
     if (!convId) {
@@ -142,7 +131,6 @@ export function AIChatPanel() {
       };
       addMessage(convId, assistantEntry);
     } catch (err) {
-      console.error('[AIChatPanel] Error:', err);
       const msg = err instanceof Error ? err.message
         : (uiLang === 'en' ? 'An error occurred. Please try again.' : 'حدث خطأ، حاول مرة أخرى.');
       const { retryAfterSecs } = parseAIError(JSON.stringify({ error: msg }), uiLang);
@@ -178,18 +166,6 @@ export function AIChatPanel() {
 
   return (
     <div className="chat-panel">
-
-      {/* ── Large schema warning ── */}
-      {schema.entities.length > 8 && (
-        <div className="chat-warning-banner">
-          <span className="chat-warning-icon">⚠️</span>
-          <span className="chat-warning-text">
-            {uiLang === 'en'
-              ? 'Chat is limited for large schemas. Use AI Command Bar (bottom) for operations.'
-              : 'الـ Chat محدود للـ schemas الكبيرة. استخدم شريط الـ AI (أسفل) للعمليات.'}
-          </span>
-        </div>
-      )}
 
       {/* ── Model selector bar ── */}
       <div className="chat-model-bar" ref={modelMenuRef}>
@@ -361,22 +337,20 @@ export function AIChatPanel() {
 
       {/* ── Input ── */}
       <div className="chat-input-row">
-        <div className="chat-input-wrapper">
-          <input
-            type="text"
-            className="chat-input"
-            placeholder={
-              !hasEntities
-                ? (uiLang === 'en' ? 'Generate a schema first…' : 'ولّد schema أولاً…')
-                : (uiLang === 'en' ? 'Ask me to edit the schema…' : 'اسألني لتعديل الـ schema…')
-            }
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
-            disabled={!hasEntities || loading}
-            dir="auto"
-          />
-        </div>
+        <input
+          type="text"
+          className="chat-input"
+          placeholder={
+            !hasEntities
+              ? (uiLang === 'en' ? 'Generate a schema first…' : 'ولّد schema أولاً…')
+              : (uiLang === 'en' ? 'Ask me to edit the schema…' : 'اسألني لتعديل الـ schema…')
+          }
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+          disabled={!hasEntities || loading}
+          dir="auto"
+        />
         <button
           type="button"
           className="send-btn"

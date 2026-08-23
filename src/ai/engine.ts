@@ -68,7 +68,7 @@ export async function generateSchema(
         { role: 'user',   content: buildUserPrompt(userMessage, currentSchema) },
       ],
       temperature:     0.1,
-      max_tokens:      32000, // Maximum flexibility for very large schemas (100+ entities)
+      max_tokens:      4096,
       response_format: { type: 'json_object' },
       task_type:       'schema_generation',
       lang,
@@ -108,7 +108,10 @@ export async function aiRequest(payload: {
   task_type?: string;
   lang?: 'ar' | 'en';
 }): Promise<{ ok: boolean; status: number; data: unknown }> {
-  const res = await fetch('/api/ai-proxy', {
+  const apiUrl = import.meta.env.DEV
+    ? 'http://localhost:3001/api/ai-proxy'
+    : '/api/ai-proxy';
+  const res = await fetch(apiUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
