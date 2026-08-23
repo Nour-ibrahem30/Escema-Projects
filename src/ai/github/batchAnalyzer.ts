@@ -93,13 +93,14 @@ async function callAI(
     temperature:     0.1,
     max_tokens:      TOKEN_CONFIG.maxOutputTokens,
     response_format: { type: 'json_object' },
+    task_type:       'schema_generation', // Use the strongest model
   });
 
   return {
     ok,
     status,
     body:      JSON.stringify(data),
-    modelUsed: 'backend-selected',
+    modelUsed: (data as { _model_used?: string })._model_used ?? 'backend-selected',
   };
 }
 
@@ -120,8 +121,19 @@ function extractContent(raw: string): string {
 
 function parseResponse(body: string): AISchemaResponse | null {
   try {
-    const data = JSON.parse(body) as { choices?: Array<{ message: { content: string } }> };
-    const raw  = data.choices?.[0]?.message?.content ?? '';
+    const data = JSON.parse(body) as {
+      choices?: Array<{ message: { content: string } }>;
+      error?: { message: string };
+      _model_used?: string;
+    };
+
+    // Check for error response
+    if (data.error) {
+      console.warn('[BatchAnalyzer] AI error:', data.error.message);
+      return null;
+    }
+
+    const raw = data.choices?.[0]?.message?.content ?? '';
     if (!raw) return null;
 
     const extracted = extractContent(raw);
@@ -129,7 +141,8 @@ function parseResponse(body: string): AISchemaResponse | null {
     const obj       = JSON.parse(fixed) as AISchemaResponse;
     if (!Array.isArray(obj.entities)) return null;
     return obj;
-  } catch {
+  } catch (e) {
+    console.warn('[BatchAnalyzer] Parse error:', e);
     return null;
   }
 }
@@ -155,7 +168,13 @@ export async function analyzeBatch(
         if (schema) {
           return { batchId: batch.id, status: 'success', schema, retriesUsed };
         }
-        // AI responded but JSON was unparseable — treat as failed so warning shows
+        // AI responded but JSON was unparseable — log and try next attempt
+        console.warn('[BatchAnalyzer] Could not parse response for batch', batch.id, body.slice(0, 300));
+        if (attempt < MAX_RETRIES) {
+          await sleep(RETRY_DELAYS_MS[attempt] ?? 2000);
+          retriesUsed++;
+          continue;
+        }
         return { batchId: batch.id, status: 'failed', schema: null, error: 'Could not parse AI response as JSON', retriesUsed };
       }
 
