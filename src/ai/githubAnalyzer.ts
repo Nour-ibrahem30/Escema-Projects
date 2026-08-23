@@ -233,7 +233,7 @@ export async function generateSchemaFromRepo(
     batches,
     projName,
     (_batchId, completed, total, status) => {
-      const pct = 30 + Math.floor((completed / Math.max(total, 1)) * 50);
+      const pct = Math.min(30 + Math.floor((completed / Math.max(total, 1)) * 52), 82);
       progress(
         'ai-analysis',
         `Batch ${completed}/${total} — ${status}`,

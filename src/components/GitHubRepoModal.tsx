@@ -242,12 +242,12 @@ export function GitHubRepoModal({ open, onClose }: Props) {
                     <span className="github-stage-label">
                       {STAGE_LABELS[progress.stage] ?? progress.stage}
                     </span>
-                    <span className="github-percent">{progress.percent}%</span>
+                    <span className="github-percent">{Math.min(progress.percent, 100)}%</span>
                   </div>
                   <div className="github-progress-bar-wrap">
                     <div
                       className="github-progress-bar-fill"
-                      style={{ width: `${progress.percent}%` }}
+                      style={{ width: `${Math.min(progress.percent, 100)}%` }}
                     />
                   </div>
                   <p className="github-progress-msg">{progress.message}</p>
@@ -303,7 +303,7 @@ export function GitHubRepoModal({ open, onClose }: Props) {
         <div className="github-modal-footer">
           <span className="meta">
             {step === 'repos' && !loading && `${filtered.length} repositories`}
-            {step === 'analyzing' && progress && `${progress.percent}% complete`}
+            {step === 'analyzing' && progress && `${Math.min(progress.percent, 100)}% complete`}
             {step === 'done' && 'Closing…'}
           </span>
           <button type="button" className="btn-secondary" onClick={onClose}>
